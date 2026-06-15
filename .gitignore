@@ -1,0 +1,24 @@
+# 前端依赖：指定frontend下的node_modules
+frontend/node_modules/
+# 前端打包产物
+frontend/dist/
+
+# Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# 编辑器、系统文件
+.idea/
+.vscode/
+*.log
+.DS_Store
+
+# 临时文件
+*.txt
+
+*.xml
