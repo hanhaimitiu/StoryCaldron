@@ -11,6 +11,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 
 # 编辑器、系统文件
 .idea/
@@ -20,5 +21,6 @@ venv/
 
 # 临时文件
 *.txt
+!requirements.txt
 
 *.xml

@@ -1,42 +1,46 @@
-# 小说解析助手 - StoryCaldron
+# StoryCaldron - 小说炼丹炉
 
-一个基于AI的小说解析工具，可以智能提取小说中的人物、世界观、文风、剧情等核心元素。
+一个基于 AI 的小说创作工具，支持小说解析和智能写作，采用 TUI（终端用户界面）模式。
 
 ## 技术栈
 
-- **后端**: Flask + Flask-CORS
-- **前端**: 纯HTML/CSS/JavaScript
-- **AI模型**: 支持OpenAI兼容格式的API（如GLM、GPT等）
+- **核心**: Python + LangGraph + LangChain
+- **界面**: TUI (终端交互)
+- **AI模型**: 支持 OpenAI 兼容格式的 API（如 glm-5、GPT 等）
 
 ## 快速开始
 
 ### 1. 安装依赖
 
+推荐使用项目自带的虚拟环境：
+
 ```bash
-cd backend
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+或直接安装：
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. 启动后端服务
+### 2. 配置环境变量（可选）
+
+默认配置已内置，如需自定义可设置以下环境变量：
 
 ```bash
-cd backend/api
-python app.py
+# LLM 模型配置（默认值仅供测试使用）
+set LLM_MODEL=glm-5
+set LLM_API_KEY=your-api-key
+set LLM_BASE_URL=http://localhost:8080
 ```
 
-后端服务将在 http://localhost:5000 启动
-
-### 3. 打开前端
-
-直接在浏览器中打开项目根目录下的 `index.html` 文件
-
-或者使用Python启动静态文件服务器：
+### 3. 启动程序
 
 ```bash
-python -m http.server 8080
+python tui_main.py
 ```
-
-然后访问 http://localhost:8080
 
 ## 功能特性
 
@@ -46,67 +50,107 @@ python -m http.server 8080
 - **文风节奏解析**: 分析整体文风、句式特征、高频用词、叙事节奏等
 - **剧情脉络解析**: 梳理主线剧情、支线任务、当前冲突、埋伏笔等
 
+### 小说创作
+- 根据上一章概括和本章大纲生成草稿
+- 自动审稿和多轮修改
+- 支持人工审核和编辑功能
+- 可提交修改建议让 AI 重写
+
 ### 数据管理
-- 解析结果自动保存到JSON文件
-- 支持查看、编辑、删除已保存的数据
-- 历史解析记录功能
+- 解析结果自动保存到 JSON 文件
+- 支持查看、添加、编辑、删除已保存的素材
+- 管理人物、文风、剧情、世界观等设定
 
-## API接口
+### 多 Agent 协作创作
+新增 `backend/collab_novel_agent.py`，按以下工作流驱动多个 Agent 协作完成一章：
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/` | GET | API首页 |
-| `/characters/` | GET/POST | 获取/创建人物 |
-| `/characters/{id}` | GET/PUT/DELETE | 人物CRUD操作 |
-| `/stories/` | GET/POST | 获取/创建剧情 |
-| `/stories/{id}` | GET/PUT/DELETE | 剧情CRUD操作 |
-| `/styles/` | GET/POST | 获取/创建文风 |
-| `/styles/{id}` | GET/PUT/DELETE | 文风CRUD操作 |
-| `/wordviews/` | GET/POST | 获取/创建世界观 |
-| `/wordviews/{id}` | GET/PUT/DELETE | 世界观CRUD操作 |
-| `/novel/parse/` | POST | 解析小说 |
+```
+加载素材上下文 -> 规划本章 -> 审批大纲卡 -> 撰写草稿
+    -> 连续性检查 ->（发现问题）修复问题 -> 再次检查
+    -> 文风润色 -> 人工审核 -> 更新素材记忆
+    -> 提出正典提案 -> 审批正典 -> 提交定稿
+```
 
-### 解析接口示例
+支持的素材卡：
+- **人物卡** (`characters.json`)
+- **剧情卡** (`plots.json` / `stories.json`)
+- **文风卡** (`styles.json`)
+- **伏笔卡** (`foreshadowing.json`)
+- **世界观卡** (`wordviews.json`)
+
+快速体验：
 
 ```bash
-curl -X POST http://localhost:5000/novel/parse/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_text": "小说原文内容...",
-    "model_name": "gpt-4o",
-    "api_key": "your-api-key",
-    "base_url": "https://api.openai.com/v1"
-  }'
+.venv\Scripts\python.exe backend\collab_novel_agent.py
 ```
+
+如需接入真实模型，先设置环境变量：
+
+```bash
+set LLM_MODEL=glm-5
+set LLM_API_KEY=your-api-key
+set LLM_BASE_URL=http://localhost:8080
+```
+
+## 使用说明
+
+### 主菜单
+
+启动后将显示主菜单：
+
+```
+【主菜单】
+  1. 解析小说 (Parse Novel)
+  2. 创作小说 (Write Novel)
+  3. 管理素材 (Data Management)
+  4. 退出 (Exit)
+```
+
+### 解析小说
+1. 选择「1. 解析小说」
+2. 粘贴小说原文（空行结束输入）
+3. 等待 AI 自动解析四个维度
+4. 解析结果自动保存
+
+### 创作小说
+1. 选择「2. 创作小说」
+2. 输入上一章概括和本章大纲
+3. 选择要使用的素材（人物、文风、剧情、世界观）
+4. AI 自动生成草稿并进行审稿
+5. 在人工审核环节可以：
+   - **采纳**: 直接使用当前草稿
+   - **编辑**: 修改草稿内容后继续
+   - **建议**: 提交修改建议让 AI 重写
+   - **终止**: 放弃本次创作
+
+### 数据管理
+1. 选择「3. 管理素材」
+2. 选择要管理的素材类型（人物/文风/剧情/世界观）
+3. 执行查看、添加、编辑、删除操作
 
 ## 项目结构
 
 ```
 StoryCaldron/
-├── index.html              # 前端主页面
+├── tui_main.py                 # TUI 主入口
 ├── backend/
-│   ├── api/
-│   │   └── app.py         # Flask应用
-│   ├── agent/
-│   │   ├── ReadNovelAgent.py    # 小说解析Agent
-│   │   └── WriteNovelAgent.py  # 小说写作Agent (暂未使用)
-│   ├── data/              # 数据存储目录
-│   └── requirements.txt   # Python依赖
+│   ├── ReadNovelAgent.py       # 小说解析 Agent
+│   ├── WriteNovelAgent.py      # 小说写作 Agent (LangGraph)
+│   ├── collab_novel_agent.py   # 多 Agent 协作小说创作工作流
+│   ├── output/                 # 定稿输出目录
+│   └── data/                   # 数据存储目录
+├── .gitignore
+├── README.md
+├── requirements.txt
+└── LICENSE
 ```
-
-## 使用说明
-
-1. 打开前端页面
-2. 填写API配置（API地址、API Key、模型名称）
-3. 粘贴需要解析的小说原文
-4. 点击"开始解析"按钮
-5. 等待解析完成，查看结果
 
 ## 注意事项
 
-- 请确保API服务可用
-- 建议使用性能较好的模型以获得更准确的解析结果
-- 解析时间取决于文本长度和API响应速度
+- LLM 服务需在配置的 `LLM_BASE_URL` 地址可用
+- 建议使用性能较好的模型以获得更准确的解析和创作结果
+- 解析和创作时间取决于文本长度和 API 响应速度
+- 创作过程中支持多轮人工审核，可反复打磨内容
 
 ## License
 
