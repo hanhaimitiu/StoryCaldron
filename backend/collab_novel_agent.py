@@ -35,31 +35,48 @@ from langgraph.checkpoint.memory import MemorySaver
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-_llm = None
+# 每个 Agent 角色的温度：判断型（规划/审批/检查/正典）求稳用低温，
+# 创作型（写作/修复/润色）求变用高温。避免所有角色共用一个温度。
+ROLE_TEMPERATURES = {
+    "planner": 0.4,
+    "card_approver": 0.2,
+    "writer": 0.9,
+    "continuity_checker": 0.2,
+    "continuity_fixer": 0.7,
+    "style_editor": 0.5,
+    "memory_updater": 0.3,
+    "canon_proposer": 0.4,
+    "canon_approver": 0.2,
+}
 
-def get_llm() -> ChatOpenAI:
-    """延迟初始化 LLM，避免导入时因缺 Key 报错。"""
-    global _llm
-    if _llm is None:
+_llm_cache: Dict[float, ChatOpenAI] = {}
+
+def get_llm(temperature: float = 0.6) -> ChatOpenAI:
+    """按温度取 LLM 实例（缓存），避免导入时因缺 Key 报错，也让各角色温度不同。"""
+    if temperature not in _llm_cache:
         api_key = os.environ.get(
             "LLM_API_KEY",
             "sk-0a9abe3a8a2241079b881333fad52c1a",
         )
-        _llm = ChatOpenAI(
+        _llm_cache[temperature] = ChatOpenAI(
             model=os.environ.get("LLM_MODEL", "glm-5"),
             api_key=api_key,
             base_url=os.environ.get("LLM_BASE_URL", "http://localhost:8080"),
-            temperature=0.6,
+            temperature=temperature,
             max_tokens=16384,
         )
-    return _llm
+    return _llm_cache[temperature]
 
 
-def _call_llm(prompt: str, system: str = "你是一位专业的小说创作助手。") -> str:
-    """调用大模型，失败时返回空字符串供上层降级处理。"""
+def _call_llm(
+    prompt: str,
+    system: str = "你是一位专业的小说创作助手。",
+    temperature: float = 0.7,
+) -> str:
+    """调用大模型，失败时返回空字符串供上层降级处理。temperature 控制角色温度。"""
     try:
         messages = [SystemMessage(content=system), HumanMessage(content=prompt)]
-        return get_llm().invoke(messages).content.strip()
+        return get_llm(temperature).invoke(messages).content.strip()
     except Exception as e:
         print(f"⚠️ LLM 调用失败: {e}")
         return ""
@@ -304,7 +321,8 @@ def plan_chapter_node(state: CollabNovelState) -> CollabNovelState:
 直接输出计划文本，不要额外寒暄。
 """
 
-    plan = _call_llm(prompt, system="你是一位擅长拆解网文章节结构的大纲规划师。")
+    plan = _call_llm(prompt, system="你是一位擅长拆解网文章节结构的大纲规划师。",
+                     temperature=ROLE_TEMPERATURES["planner"])
 
     if not plan:
         plan = f"【默认计划】\n本章目标：{state.get('chapter_outline', '')[:80]}...\n" \
@@ -344,7 +362,8 @@ def approve_card_node(state: CollabNovelState) -> CollabNovelState:
 第二行起给出理由（若是 REJECTED，请给出具体修改建议）。
 """
 
-    result = _call_llm(prompt, system="你是一位严格但务实的网文编辑。")
+    result = _call_llm(prompt, system="你是一位严格但务实的网文编辑。",
+                       temperature=ROLE_TEMPERATURES["card_approver"])
     approved = "APPROVED" in result.upper() or "通过" in result
 
     if not result:
@@ -401,7 +420,8 @@ def write_draft_node(state: CollabNovelState) -> CollabNovelState:
 6. 不要刻意埋钩子或升华。
 """
 
-    draft = _call_llm(prompt, system="你是一位高产且注重细节的网文作家。")
+    draft = _call_llm(prompt, system="你是一位高产且注重细节的网文作家。",
+                      temperature=ROLE_TEMPERATURES["writer"])
 
     if not draft:
         draft = f"【模拟草稿】\n根据计划「{state.get('chapter_plan', '')[:60]}...」展开：\n\n"
@@ -444,7 +464,8 @@ def check_continuity_node(state: CollabNovelState) -> CollabNovelState:
 第二行起输出具体问题与修改建议（CLEAN 时简要说明即可）。
 """
 
-    result = _call_llm(prompt, system="你是一位注重细节的小说设定管理员。")
+    result = _call_llm(prompt, system="你是一位注重细节的小说设定管理员。",
+                       temperature=ROLE_TEMPERATURES["continuity_checker"])
     has_issue = "ISSUES_FOUND" in result.upper() or "问题" in result
 
     if not result:
@@ -498,7 +519,8 @@ def fix_issues_node(state: CollabNovelState) -> CollabNovelState:
 请输出修改后的完整正文。不要只输出修改片段。
 """
 
-    fixed = _call_llm(prompt, system="你是一位擅长无痕修改的网文编辑。")
+    fixed = _call_llm(prompt, system="你是一位擅长无痕修改的网文编辑。",
+                      temperature=ROLE_TEMPERATURES["continuity_fixer"])
 
     if not fixed:
         fixed = state.get("draft", "") + "\n\n    【模拟修复】已根据检查报告调整人物反应，使过渡更自然。"
@@ -531,7 +553,8 @@ def style_edit_node(state: CollabNovelState) -> CollabNovelState:
 3. 直接输出润色后的完整正文。
 """
 
-    edited = _call_llm(prompt, system="你是一位对文字敏感的文风编辑。")
+    edited = _call_llm(prompt, system="你是一位对文字敏感的文风编辑。",
+                       temperature=ROLE_TEMPERATURES["style_editor"])
 
     if not edited:
         edited = state.get("draft", "")
@@ -593,7 +616,8 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
 {{"foreshadowing_updates": [...], "plot_updates": [...]}}
 """
 
-    raw = _call_llm(prompt, system="你是一位负责维护小说世界观的资料管理员。")
+    raw = _call_llm(prompt, system="你是一位负责维护小说世界观的资料管理员。",
+                    temperature=ROLE_TEMPERATURES["memory_updater"])
 
     # 简单解析
     try:
@@ -655,7 +679,8 @@ def propose_canon_node(state: CollabNovelState) -> CollabNovelState:
 直接输出提案文本。
 """
 
-    proposal = _call_llm(prompt, system="你是一位负责维护小说正典的管理员。")
+    proposal = _call_llm(prompt, system="你是一位负责维护小说正典的管理员。",
+                         temperature=ROLE_TEMPERATURES["canon_proposer"])
 
     if not proposal:
         proposal = "【默认正典提案】\n本章情节已加入正典，伏笔与剧情已更新。"
@@ -692,7 +717,8 @@ def approve_canon_node(state: CollabNovelState) -> CollabNovelState:
 第二行起给出理由（REJECTED 时说明需要修改的地方）。
 """
 
-    result = _call_llm(prompt, system="你是一位把控全书走向的总编。")
+    result = _call_llm(prompt, system="你是一位把控全书走向的总编。",
+                       temperature=ROLE_TEMPERATURES["canon_approver"])
     approved = "APPROVED" in result.upper() or "通过" in result
 
     if not result:
