@@ -1,19 +1,68 @@
+/*
+ * 皮肤主题：底色与强调色全部走 CSS 变量，切换 <html data-theme> 就换肤。
+ * 刻意避开「蓝紫渐变 + 高饱和蓝」那套 AI 生成腔：不用渐变、不发光，
+ * 每套皮肤只留一个强调色。
+ */
+
+/* 默认：暖铜（呼应「炼丹炉」） */
 :root {
-  --bg: #0d1117;
-  --bg-soft: #12171f;
-  --panel: #161b22;
-  --panel-2: #1c232d;
-  --border: #262d38;
-  --border-soft: #1f2731;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --dim: #6e7681;
-  --accent: #58a6ff;
-  --accent-dark: #1f6feb;
-  --ok: #3fb950;
-  --warn: #d29922;
-  --err: #f85149;
-  --radius: 10px;
+  --bg: #14130f;
+  --bg-soft: #181712;
+  --panel: #1d1b16;
+  --panel-2: #24211a;
+  --raise: #1a1811;
+  --border: #302c23;
+  --border-soft: #26231c;
+  --text: #e9e4d9;
+  --muted: #a1998a;
+  --dim: #7d7668;
+  --accent: #c98f43;
+  --accent-dark: #8f6528;
+  --accent-hover: #a8752f;
+  --ok: #8a9a5b;
+  --warn: #c2a03c;
+  --err: #c25b4a;
+  --radius: 6px;
+}
+
+/* 石墨：几乎无彩色，最克制 */
+:root[data-theme="mono"] {
+  --bg: #131313;
+  --bg-soft: #171717;
+  --panel: #1c1c1c;
+  --panel-2: #232323;
+  --raise: #1a1a1a;
+  --border: #2e2e2e;
+  --border-soft: #262626;
+  --text: #ececec;
+  --muted: #a2a2a2;
+  --dim: #747474;
+  --accent: #dedede;
+  --accent-dark: #3a3a3a;
+  --accent-hover: #4a4a4a;
+  --ok: #a9b0a4;
+  --warn: #b6ab8c;
+  --err: #b99a95;
+}
+
+/* 苔青：冷调，但避开蓝 */
+:root[data-theme="green"] {
+  --bg: #101413;
+  --bg-soft: #141917;
+  --panel: #1a201d;
+  --panel-2: #212926;
+  --raise: #17201c;
+  --border: #2a332e;
+  --border-soft: #232b27;
+  --text: #e2e8e3;
+  --muted: #98a49c;
+  --dim: #6f7a73;
+  --accent: #6fa287;
+  --accent-dark: #3f6b57;
+  --accent-hover: #52806a;
+  --ok: #7fa87f;
+  --warn: #b39a4e;
+  --err: #b8655a;
 }
 
 * { box-sizing: border-box; }
@@ -39,8 +88,11 @@ button, input, select, textarea {
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button.primary { background: var(--accent-dark); border-color: var(--accent-dark); }
-button.primary:hover { background: var(--accent); }
+button.primary {
+  background: var(--accent-dark); border-color: var(--accent-dark);
+  color: #f7f3ec;
+}
+button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 button.danger { color: var(--err); }
 button.danger:hover { border-color: var(--err); }
 button.link {
@@ -66,9 +118,10 @@ textarea { resize: vertical; }
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 18px; }
 .brand .logo {
-  width: 34px; height: 34px; border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent-dark), #8957e5);
-  display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  width: 34px; height: 34px; border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  display: grid; place-items: center; font-weight: 700; font-size: 12px;
+  color: var(--accent); letter-spacing: .02em;
 }
 .brand .name { font-weight: 600; }
 .brand .sub { font-size: 11px; color: var(--muted); }
@@ -90,6 +143,14 @@ textarea { resize: vertical; }
 .pname { font-size: 13px; }
 .pmeta { font-size: 11px; color: var(--muted); }
 .sidebar .new { margin: 10px 0; width: 100%; }
+.themes { display: flex; align-items: center; gap: 7px; padding: 0 6px 12px; }
+.themes .tlabel { font-size: 11px; color: var(--dim); }
+.swatch {
+  width: 14px; height: 14px; padding: 0;
+  border-radius: 50%; border: 1px solid var(--border);
+}
+.swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-soft); }
+
 .sidebar .foot {
   border-top: 1px solid var(--border-soft);
   padding-top: 10px; font-size: 11px; color: var(--dim); line-height: 1.9;
@@ -165,16 +226,17 @@ textarea { resize: vertical; }
 @keyframes blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 .err-box {
-  background: rgba(248, 81, 73, .08); border: 1px solid var(--err);
+  background: rgba(194, 91, 74, .10); border: 1px solid var(--err);
   border-radius: var(--radius); padding: 12px; font-size: 13px; color: var(--err);
   white-space: pre-wrap;
 }
 
 /* ---------------- 人工审核卡 ---------------- */
 .review {
-  background: linear-gradient(180deg, rgba(88,166,255,.08), rgba(88,166,255,.02));
-  border: 1px solid var(--accent-dark);
-  border-radius: 12px; padding: 16px; margin: 10px 0;
+  background: var(--raise);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 16px; margin: 10px 0;
 }
 .rhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .rhead .tag { font-weight: 600; color: var(--accent); font-size: 13px; }
@@ -276,6 +338,6 @@ textarea { resize: vertical; }
   position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 10px 18px; z-index: 99;
-  box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); font-size: 13px;
 }
 .toast.err { border-color: var(--err); color: var(--err); }

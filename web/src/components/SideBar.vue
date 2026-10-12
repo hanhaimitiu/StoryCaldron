@@ -1,5 +1,5 @@
 <script setup>
-import { store, selectProject, createProject } from '../store'
+import { store, selectProject, createProject, setTheme, THEMES } from '../store'
 
 const AGENT_COUNT = 12
 
@@ -36,6 +36,19 @@ async function onCreate() {
     </ul>
 
     <button class="new" @click="onCreate">+ 新建项目</button>
+
+    <div class="themes">
+      <span class="tlabel">皮肤</span>
+      <button
+        v-for="t in THEMES"
+        :key="t.key"
+        class="swatch"
+        :class="{ on: store.theme === t.key }"
+        :style="{ background: t.swatch }"
+        :title="t.name"
+        @click="setTheme(t.key)"
+      ></button>
+    </div>
 
     <div class="foot">
       <div><b>{{ AGENT_COUNT }}</b> 个 Agent 节点接力</div>

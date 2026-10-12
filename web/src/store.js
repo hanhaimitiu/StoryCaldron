@@ -8,8 +8,19 @@ import { reactive } from 'vue'
 import { api } from './api'
 
 const POLL_MS = 2000
+const THEME_KEY = 'sc-theme'
+
+/** 三套皮肤；swatch 是切换器里那个小色点的颜色 */
+export const THEMES = [
+  { key: 'copper', name: '暖铜', swatch: '#c98f43' },
+  { key: 'mono', name: '石墨', swatch: '#dedede' },
+  { key: 'green', name: '苔青', swatch: '#6fa287' },
+]
 
 export const store = reactive({
+  // 皮肤
+  theme: 'copper',
+
   // 项目
   projects: [],
   project: '',
@@ -226,6 +237,31 @@ export async function stopWrite() {
     store.session.status = 'stopped'
     toast('已终止')
   })
+}
+
+/* ------------------------------ 皮肤 ------------------------------ */
+function applyTheme() {
+  document.documentElement.dataset.theme = store.theme
+}
+
+export function initTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    store.theme = THEMES.some((t) => t.key === saved) ? saved : 'copper'
+  } catch {
+    store.theme = 'copper'
+  }
+  applyTheme()
+}
+
+export function setTheme(key) {
+  store.theme = key
+  try {
+    localStorage.setItem(THEME_KEY, key)
+  } catch {
+    /* 隐私模式下写不了，忽略 */
+  }
+  applyTheme()
 }
 
 /* ------------------------------ 界面 ------------------------------ */
