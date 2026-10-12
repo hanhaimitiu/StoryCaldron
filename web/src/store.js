@@ -10,16 +10,18 @@ import { api } from './api'
 const POLL_MS = 2000
 const THEME_KEY = 'sc-theme'
 
-/** 三套皮肤；swatch 是切换器里那个小色点的颜色 */
+/** 五套皮肤（前两套浅色）；swatch 是切换器里那个小色点的颜色 */
 export const THEMES = [
+  { key: 'paper', name: '宣纸', swatch: '#f5f2ea' },
+  { key: 'moon', name: '月白', swatch: '#eef1f3' },
   { key: 'copper', name: '暖铜', swatch: '#c98f43' },
-  { key: 'mono', name: '石墨', swatch: '#dedede' },
-  { key: 'green', name: '苔青', swatch: '#6fa287' },
+  { key: 'mono', name: '石墨', swatch: '#6e6e6e' },
+  { key: 'green', name: '苔青', swatch: '#4f7d68' },
 ]
 
 export const store = reactive({
-  // 皮肤
-  theme: 'copper',
+  // 皮肤（默认宣纸：浅色，用户不喜欢黑底）
+  theme: 'paper',
 
   // 项目
   projects: [],
@@ -247,9 +249,9 @@ function applyTheme() {
 export function initTheme() {
   try {
     const saved = localStorage.getItem(THEME_KEY)
-    store.theme = THEMES.some((t) => t.key === saved) ? saved : 'copper'
+    store.theme = THEMES.some((t) => t.key === saved) ? saved : 'paper'
   } catch {
-    store.theme = 'copper'
+    store.theme = 'paper'
   }
   applyTheme()
 }

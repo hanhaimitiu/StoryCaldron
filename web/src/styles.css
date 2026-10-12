@@ -1,11 +1,55 @@
 /*
  * 皮肤主题：底色与强调色全部走 CSS 变量，切换 <html data-theme> 就换肤。
- * 刻意避开「蓝紫渐变 + 高饱和蓝」那套 AI 生成腔：不用渐变、不发光，
- * 每套皮肤只留一个强调色。
+ * 浅色两套（宣纸 / 月白）+ 深色三套（暖铜 / 石墨 / 苔青），默认宣纸。
+ * 不用渐变、不发光，每套皮肤只留一个强调色。
  */
 
-/* 默认：暖铜（呼应「炼丹炉」） */
+/* 默认：宣纸（暖白，纸感，长时间看字不累） */
 :root {
+  color-scheme: light;
+  --bg: #f5f2ea;
+  --bg-soft: #ebe7dc;
+  --panel: #fffdf8;
+  --panel-2: #f1ede3;
+  --raise: #fbf9f3;
+  --border: #ddd6c6;
+  --border-soft: #e7e1d4;
+  --text: #2a2620;
+  --muted: #6d675c;
+  --dim: #8d867a;
+  --accent: #a9712a;
+  --accent-dark: #a9712a;
+  --accent-hover: #8c5c1e;
+  --ok: #5f7a3f;
+  --warn: #96782a;
+  --err: #a43f2e;
+  --radius: 6px;
+}
+
+/* 月白：冷灰白 */
+:root[data-theme="moon"] {
+  color-scheme: light;
+  --bg: #f2f4f5;
+  --bg-soft: #e8ebed;
+  --panel: #fdfefe;
+  --panel-2: #eef1f3;
+  --raise: #fafbfc;
+  --border: #d4d9dd;
+  --border-soft: #e2e6ea;
+  --text: #23282b;
+  --muted: #5f686e;
+  --dim: #7d858b;
+  --accent: #3d6b57;
+  --accent-dark: #3d6b57;
+  --accent-hover: #2f5545;
+  --ok: #4f7a52;
+  --warn: #8a6f2a;
+  --err: #a03f34;
+}
+
+/* 暖铜：深暖（呼应「炼丹炉」） */
+:root[data-theme="copper"] {
+  color-scheme: dark;
   --bg: #14130f;
   --bg-soft: #181712;
   --panel: #1d1b16;
@@ -27,6 +71,7 @@
 
 /* 石墨：几乎无彩色，最克制 */
 :root[data-theme="mono"] {
+  color-scheme: dark;
   --bg: #131313;
   --bg-soft: #171717;
   --panel: #1c1c1c;
@@ -47,6 +92,7 @@
 
 /* 苔青：冷调，但避开蓝 */
 :root[data-theme="green"] {
+  color-scheme: dark;
   --bg: #101413;
   --bg-soft: #141917;
   --panel: #1a201d;
@@ -338,6 +384,6 @@ textarea { resize: vertical; }
   position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 10px 18px; z-index: 99;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .22); font-size: 13px;
 }
 .toast.err { border-color: var(--err); color: var(--err); }
