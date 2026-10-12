@@ -39,8 +39,11 @@ set LLM_BASE_URL=http://localhost:8080
 ### 3. 启动程序
 
 ```bash
-python tui_main.py
+.venv\Scripts\python.exe backend\run_chapter.py
 ```
+
+> 说明：早先规划的 TUI 入口 `tui_main.py` **尚未实现**，下面「使用说明」里描述的是它规划中的菜单。
+> 目前在用的一是可用的命令行入口 `backend/run_chapter.py`，二是多 Agent 协作工作流（见下文）。
 
 ## 功能特性
 
@@ -78,18 +81,65 @@ python tui_main.py
 - **伏笔卡** (`foreshadowing.json`)
 - **世界观卡** (`wordviews.json`)
 
-快速体验：
+#### 用法一：命令行入口（推荐）
+
+`backend/run_chapter.py` 是日常使用的入口。它**只读取** `backend/data/` 下的素材卡，不会覆盖或重置它们。
+
+```bash
+# 看有哪些素材卡可用
+.venv\Scripts\python.exe backend\run_chapter.py --list-cards
+
+# 交互式写一章：跑到「人工审核」时会在终端里问你
+.venv\Scripts\python.exe backend\run_chapter.py ^
+    --title "第二章 剑鸣" ^
+    --outline "陆青崖引动古剑击退妖兽，封印裂痕扩大被长老察觉。" ^
+    --prev "第一章：参加外门考核，进入断魂林。"
+
+# 不带参数也行，会提示你输入标题、大纲、上一章概括
+.venv\Scripts\python.exe backend\run_chapter.py
+
+# 跳过人工审核，直接跑完
+.venv\Scripts\python.exe backend\run_chapter.py --title "..." --outline "..." --auto
+```
+
+参数说明：
+
+| 参数 | 说明 |
+|---|---|
+| `--title` | 章节标题 |
+| `--outline` | 本章大纲 |
+| `--prev` | 上一章概括；省略会交互询问，传 `""` 表示确实没有 |
+| `--characters` / `--plots` / `--styles` / `--fore` / `--worlds` | 按 id 选卡，逗号分隔；留空=全部加载 |
+| `--auto` | 跳过人工审核，自动通过后跑完 |
+| `--list-cards` | 列出可用素材卡的 id 和摘要 |
+
+跑到「人工审核」时停住，终端里给出四个选项：
+
+```
+[1] 通过              → 继续到出稿
+[2] 提修改意见        → 回到文风润色重排，之后再停一次
+[3] 直接给出全文      → 用你贴的全文替换（输入单独一行 END 结束）
+[4] 终止本次创作      → 停止，不出稿
+```
+
+定稿写到 `backend/output/chapter_<会话id前8位>.txt`。
+
+#### 用法二：自带演示脚本
 
 ```bash
 .venv\Scripts\python.exe backend\collab_novel_agent.py
 ```
 
-如需接入真实模型，先设置环境变量：
+> ⚠️ 这个演示入口每次运行都会把 `backend/data/` 里的素材卡**重置成演示用的那套**，请勿用于真实创作。
+
+#### 更换模型
+
+代码默认指向本地 llama.cpp 服务（`http://localhost:8080/v1`）。换模型或换服务地址用环境变量覆盖：
 
 ```bash
-set LLM_MODEL=glm-5
+set LLM_MODEL=你的模型名
 set LLM_API_KEY=your-api-key
-set LLM_BASE_URL=http://localhost:8080
+set LLM_BASE_URL=http://your-host:port/v1
 ```
 
 ## 使用说明
@@ -132,13 +182,13 @@ set LLM_BASE_URL=http://localhost:8080
 
 ```
 StoryCaldron/
-├── tui_main.py                 # TUI 主入口
 ├── backend/
+│   ├── run_chapter.py          # 命令行入口（日常使用）
+│   ├── collab_novel_agent.py   # 多 Agent 协作小说创作工作流
 │   ├── ReadNovelAgent.py       # 小说解析 Agent
 │   ├── WriteNovelAgent.py      # 小说写作 Agent (LangGraph)
-│   ├── collab_novel_agent.py   # 多 Agent 协作小说创作工作流
 │   ├── output/                 # 定稿输出目录
-│   └── data/                   # 数据存储目录
+│   └── data/                   # 素材卡存储目录
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
