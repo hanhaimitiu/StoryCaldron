@@ -81,28 +81,47 @@ set LLM_BASE_URL=http://localhost:8080
 - **伏笔卡** (`foreshadowing.json`)
 - **世界观卡** (`wordviews.json`)
 
-#### 用法一：命令行入口（推荐）
+#### 用法一：命令行入口（推荐，项目模式）
 
-`backend/run_chapter.py` 是日常使用的入口。它**只读取** `backend/data/` 下的素材卡，不会覆盖或重置它们。
+`backend/run_chapter.py` 是日常使用的入口。**每个小说是一个项目目录**，素材卡和章节正文都放在该项目里，互不干扰、天然隔离。换一本书就换一个 `--project` 目录。
 
 ```bash
-# 看有哪些素材卡可用
-.venv\Scripts\python.exe backend\run_chapter.py --list-cards
+# 1) 新建项目（--demo 直接塞一套演示卡，方便第一次试跑）
+.venv\Scripts\python.exe backend\run_chapter.py init --project projects/mybook --demo
 
-# 交互式写一章：跑到「人工审核」时会在终端里问你
-.venv\Scripts\python.exe backend\run_chapter.py ^
+# 2) 看看这个项目里有哪些卡
+.venv\Scripts\python.exe backend\run_chapter.py cards --project projects/mybook
+
+# 3) 交互式补一张卡（按字段提示填；也可 --data '{"id":..}' 直传 JSON）
+.venv\Scripts\python.exe backend\run_chapter.py new-card --project projects/mybook --type character
+
+# 4) 向导式一次性建立人物/剧情/文风/伏笔/世界观几类卡
+.venv\Scripts\python.exe backend\run_chapter.py setup --project projects/mybook
+
+# 5) 写一章：跑到「人工审核」时会在终端里问你
+.venv\Scripts\python.exe backend\run_chapter.py write --project projects/mybook ^
     --title "第二章 剑鸣" ^
     --outline "陆青崖引动古剑击退妖兽，封印裂痕扩大被长老察觉。" ^
     --prev "第一章：参加外门考核，进入断魂林。"
 
-# 不带参数也行，会提示你输入标题、大纲、上一章概括
-.venv\Scripts\python.exe backend\run_chapter.py
+# 不带 --project 时默认用 projects/default（不存在会自动创建）
+.venv\Scripts\python.exe backend\run_chapter.py write --title "..." --outline "..."
 
 # 跳过人工审核，直接跑完
-.venv\Scripts\python.exe backend\run_chapter.py --title "..." --outline "..." --auto
+.venv\Scripts\python.exe backend\run_chapter.py write --project projects/mybook --auto
 ```
 
-参数说明：
+子命令一览：
+
+| 子命令 | 说明 |
+|---|---|
+| `init --project <dir> [--demo]` | 创建/初始化项目目录；`--demo` 写入演示卡 |
+| `cards` / `list-cards` | 列出项目内所有素材卡的 id 与摘要 |
+| `new-card --type <t> [--data '<json>']` | 新建一张卡；`--data` 直传 JSON 则免交互 |
+| `setup` | 向导式依次建立各类素材卡 |
+| `write` | 在项目内写一章 |
+
+`write` 的更多参数：
 
 | 参数 | 说明 |
 |---|---|
@@ -111,7 +130,6 @@ set LLM_BASE_URL=http://localhost:8080
 | `--prev` | 上一章概括；省略会交互询问，传 `""` 表示确实没有 |
 | `--characters` / `--plots` / `--styles` / `--fore` / `--worlds` | 按 id 选卡，逗号分隔；留空=全部加载 |
 | `--auto` | 跳过人工审核，自动通过后跑完 |
-| `--list-cards` | 列出可用素材卡的 id 和摘要 |
 
 跑到「人工审核」时停住，终端里给出四个选项：
 
@@ -122,7 +140,23 @@ set LLM_BASE_URL=http://localhost:8080
 [4] 终止本次创作      → 停止，不出稿
 ```
 
-定稿写到 `backend/output/chapter_<会话id前8位>.txt`。
+**项目目录结构**：
+
+```
+projects/mybook/
+├── project.json            # 项目元信息 + 章节索引
+├── cards/                  # 素材卡（Agent 会在这里读/写卡片）
+│   ├── characters.json
+│   ├── stories.json  (或 plots.json)
+│   ├── styles.json
+│   ├── foreshadowing.json
+│   └── wordviews.json
+└── chapters/               # 已写章节正文
+    ├── chapter_001.txt
+    └── chapter_002.txt
+```
+
+写作过程中，Agent 会**自动把本章新出场的人物、新补充的世界观落成卡片**写回 `cards/`，伏笔/剧情的进度更新也会回写——也就是「读卡 + 建卡 + 写小说」都发生在同一个项目目录里。定稿按 `chapter_001.txt` 顺序写入 `chapters/`，并在 `project.json` 登记章节索引。
 
 #### 用法二：自带演示脚本
 
@@ -183,12 +217,14 @@ set LLM_BASE_URL=http://your-host:port/v1
 ```
 StoryCaldron/
 ├── backend/
-│   ├── run_chapter.py          # 命令行入口（日常使用）
+│   ├── run_chapter.py          # 命令行入口（项目模式，日常使用）
 │   ├── collab_novel_agent.py   # 多 Agent 协作小说创作工作流
+│   ├── project.py              # 项目工作区管理（卡片读写、章节落盘、脚手架）
 │   ├── ReadNovelAgent.py       # 小说解析 Agent
 │   ├── WriteNovelAgent.py      # 小说写作 Agent (LangGraph)
-│   ├── output/                 # 定稿输出目录
-│   └── data/                   # 素材卡存储目录
+│   ├── output/                 # 演示模式定稿输出目录
+│   └── data/                   # 演示模式素材卡目录
+├── projects/                   # 各小说项目工作区（init/cards/write 都在这）
 ├── .gitignore
 ├── README.md
 ├── requirements.txt
