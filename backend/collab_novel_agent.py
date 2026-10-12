@@ -29,11 +29,16 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
+import sys
+# 让同目录下的 project 模块可 import（commit 节点写章节时会用到）
+sys.path.insert(0, os.path.dirname(__file__))
+
 # ---------------------------------------------------------------------------
 # 全局配置
 # ---------------------------------------------------------------------------
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 # 每个 Agent 角色的温度：判断型（规划/审批/检查/正典）求稳用低温，
 # 创作型（写作/修复/润色）求变用高温。避免所有角色共用一个温度。
@@ -104,15 +109,17 @@ def _call_llm(
 # ---------------------------------------------------------------------------
 # 工具函数：读写素材卡
 # ---------------------------------------------------------------------------
-def load_card_file(filename: str, ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def load_card_file(filename: str, ids: Optional[List[str]] = None,
+                   base_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    从 backend/data/ 读取卡片 JSON。
+    读取卡片 JSON。base_dir 缺省时用全局 DATA_DIR；项目模式传入项目的 cards/ 目录。
     支持：
       - 直接按 id 列表过滤；
       - 未传 id 时返回全部；
       - 文件不存在时返回空列表。
     """
-    path = os.path.join(DATA_DIR, filename)
+    base_dir = base_dir or DATA_DIR
+    path = os.path.join(base_dir, filename)
     if not os.path.exists(path):
         return []
 
@@ -146,9 +153,11 @@ def load_card_file(filename: str, ids: Optional[List[str]] = None) -> List[Dict[
     return result
 
 
-def save_card_file(filename: str, items: List[Dict[str, Any]]):
-    """以对象字典形式保存卡片（key = id），保留旧数据并覆盖同名 id。"""
-    path = os.path.join(DATA_DIR, filename)
+def save_card_file(filename: str, items: List[Dict[str, Any]],
+                   base_dir: Optional[str] = None):
+    """以对象字典形式保存卡片（key = id），保留旧数据并覆盖同名 id。base_dir 缺省用 DATA_DIR。"""
+    base_dir = base_dir or DATA_DIR
+    path = os.path.join(base_dir, filename)
     db: Dict[str, Any] = {}
     if os.path.exists(path):
         try:
@@ -235,6 +244,11 @@ class CollabNovelState(TypedDict, total=False):
     # 兼容中断恢复
     waiting_for_human: bool
     is_terminated: bool
+
+    # 项目工作区（项目模式时由 start_session 注入；演示模式为空）
+    project_dir: str
+    cards_dir: str
+    chapters_dir: str
 
 
 # ---------------------------------------------------------------------------
@@ -641,10 +655,12 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
 请输出更新后的内容：
 1. 已回收的伏笔（状态改为 resolved）；
 2. 新埋下的伏笔（新增条目，状态为 pending）；
-3. 剧情卡进度更新（状态改为 completed/in_progress）。
+3. 剧情卡进度更新（状态改为 completed/in_progress）；
+4. 新出场人物（若本章出现了此前没有的角色，给出 id、name 与一句设定，status 为 new）；
+5. 新补充的世界观（若本章补充了设定，给出 id、world_theme 与要点）。
 
 请严格输出 JSON：
-{{"foreshadowing_updates": [...], "plot_updates": [...]}}
+{{"foreshadowing_updates": [...], "plot_updates": [...], "new_characters": [...], "new_worldviews": [...]}}
 """
 
     raw = _call_llm(prompt, system="你是一位负责维护小说世界观的资料管理员。",
@@ -655,9 +671,13 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
         match = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
         foreshadowing_updates = match.get("foreshadowing_updates", [])
         plot_updates = match.get("plot_updates", [])
+        new_characters = match.get("new_characters", [])
+        new_worldviews = match.get("new_worldviews", [])
     except Exception:
         foreshadowing_updates = []
         plot_updates = []
+        new_characters = []
+        new_worldviews = []
 
     # 合并回卡片（简单按 id 覆盖）
     existing_foreshadowing = {str(item.get("id", i)): item for i, item in enumerate(state.get("foreshadowing_cards", []))}
@@ -670,18 +690,52 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
         key = str(upd.get("id", uuid.uuid4().hex))
         existing_plots[key] = upd
 
-    # 写回文件
-    save_card_file("foreshadowing.json", list(existing_foreshadowing.values()))
-    save_card_file("plots.json" if os.path.exists(os.path.join(DATA_DIR, "plots.json")) else "stories.json",
-                   list(existing_plots.values()))
+    # 合并新出场人物 / 新世界观到已有卡片（按 id 覆写，避免重复）
+    cards_dir = state.get("cards_dir") or DATA_DIR
+    existing_characters = {str(item.get("id", i)): item
+                           for i, item in enumerate(state.get("character_cards", []))}
+    existing_names = {str(v.get("name", "")).strip()
+                      for v in existing_characters.values() if v.get("name")}
+    for nc in new_characters:
+        if not isinstance(nc, dict):
+            continue
+        nc_name = str(nc.get("name", "")).strip()
+        if nc_name and nc_name in existing_names:
+            continue  # 与已有同名人物，跳过避免重复建卡
+        key = str(nc.get("id") or f"char_{uuid.uuid4().hex[:6]}")
+        existing_characters[key] = nc
+        existing_names.add(nc_name)
+    existing_worldviews = {str(item.get("id", i)): item
+                           for i, item in enumerate(state.get("worldview_cards", []))}
+    for nw in new_worldviews:
+        if not isinstance(nw, dict):
+            continue
+        key = str(nw.get("id") or f"world_{uuid.uuid4().hex[:6]}")
+        existing_worldviews[key] = nw
 
-    report = f"更新伏笔 {len(foreshadowing_updates)} 条，剧情 {len(plot_updates)} 条。"
+    # 写回项目 / 全局 cards 目录
+    plot_file = "stories.json" if os.path.exists(os.path.join(cards_dir, "stories.json")) else "plots.json"
+    save_card_file("foreshadowing.json", list(existing_foreshadowing.values()), base_dir=cards_dir)
+    save_card_file(plot_file, list(existing_plots.values()), base_dir=cards_dir)
+    save_card_file("characters.json", list(existing_characters.values()), base_dir=cards_dir)
+    save_card_file("wordviews.json", list(existing_worldviews.values()), base_dir=cards_dir)
+
+    new_bits = []
+    if new_characters:
+        new_bits.append(f"新人物 {len(new_characters)} 个")
+    if new_worldviews:
+        new_bits.append(f"新世界观 {len(new_worldviews)} 条")
+    report = f"更新伏笔 {len(foreshadowing_updates)} 条，剧情 {len(plot_updates)} 条"
+    if new_bits:
+        report += "，" + "、".join(new_bits)
     print(f"   {report}")
 
     return {
         **state,
         "foreshadowing_cards": list(existing_foreshadowing.values()),
         "plot_cards": list(existing_plots.values()),
+        "character_cards": list(existing_characters.values()),
+        "worldview_cards": list(existing_worldviews.values()),
         "update_memory_report": report,
         "current_stage": "memory_updated",
     }
@@ -781,15 +835,24 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
 
     final_text = state.get("style_edited_draft") or state.get("draft", "")
 
-    # 保存到 output 目录
-    output_dir = os.path.join(os.path.dirname(__file__), "output")
-    os.makedirs(output_dir, exist_ok=True)
-    filename = f"chapter_{state.get('session_id', uuid.uuid4().hex)[:8]}.txt"
-    path = os.path.join(output_dir, filename)
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(f"# {state.get('chapter_title', '未命名章节')}\n\n")
-        f.write(final_text)
+    # 项目模式：章节写入 <project>/chapters/ 并记录到 project.json；
+    # 演示模式：写入全局 backend/output/。
+    project_dir = state.get("project_dir")
+    if project_dir:
+        import project as _proj
+        path = _proj.add_chapter(
+            project_dir,
+            state.get("chapter_title", "未命名章节"),
+            final_text,
+        )
+    else:
+        output_dir = OUTPUT_DIR
+        os.makedirs(output_dir, exist_ok=True)
+        filename = f"chapter_{state.get('session_id', uuid.uuid4().hex)[:8]}.txt"
+        path = os.path.join(output_dir, filename)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"# {state.get('chapter_title', '未命名章节')}\n\n")
+            f.write(final_text)
 
     print(f"   定稿已保存：{path}")
 
@@ -866,20 +929,33 @@ def start_session(
     style_ids: Optional[List[str]] = None,
     foreshadowing_ids: Optional[List[str]] = None,
     worldview_ids: Optional[List[str]] = None,
+    project_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """初始化一章创作会话，加载指定卡片。未指定 id 则加载全部。"""
+    """初始化一章创作会话。
+
+    project_dir 为项目工作区目录时，从 <project>/cards/ 读取素材卡，章节写回 <project>/chapters/；
+    省略则沿用全局 DATA_DIR / OUTPUT_DIR（演示模式）。未指定 id 则加载全部卡片。
+    """
     sid = session_id or f"collab_{uuid.uuid4().hex[:12]}"
+
+    # 项目模式：卡片与章节都落在项目目录内
+    if project_dir:
+        cards_dir = os.path.join(project_dir, "cards")
+        chapters_dir = os.path.join(project_dir, "chapters")
+    else:
+        cards_dir = DATA_DIR
+        chapters_dir = OUTPUT_DIR
 
     initial_state: CollabNovelState = {
         "session_id": sid,
         "chapter_title": chapter_title,
         "chapter_outline": chapter_outline,
         "previous_summary": previous_summary,
-        "character_cards": load_card_file("characters.json", character_ids),
-        "plot_cards": load_card_file("stories.json", plot_ids) or load_card_file("plots.json", plot_ids),
-        "style_cards": load_card_file("styles.json", style_ids),
-        "foreshadowing_cards": load_card_file("foreshadowing.json", foreshadowing_ids),
-        "worldview_cards": load_card_file("wordviews.json", worldview_ids),
+        "character_cards": load_card_file("characters.json", character_ids, cards_dir),
+        "plot_cards": load_card_file("stories.json", plot_ids, cards_dir) or load_card_file("plots.json", plot_ids, cards_dir),
+        "style_cards": load_card_file("styles.json", style_ids, cards_dir),
+        "foreshadowing_cards": load_card_file("foreshadowing.json", foreshadowing_ids, cards_dir),
+        "worldview_cards": load_card_file("wordviews.json", worldview_ids, cards_dir),
         "chapter_plan": "",
         "plan_approved": False,
         "draft": "",
@@ -901,6 +977,9 @@ def start_session(
         "canon_retry_count": 0,
         "waiting_for_human": False,
         "is_terminated": False,
+        "project_dir": project_dir or "",
+        "cards_dir": cards_dir,
+        "chapters_dir": chapters_dir,
     }
 
     return {"session_id": sid, "state": initial_state}
