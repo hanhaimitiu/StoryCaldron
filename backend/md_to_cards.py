@@ -283,7 +283,9 @@ def extract_card(ctype: str, title: str, body: str, use_llm: bool = True) -> Dic
         for field in schema["fields"]:
             if field == "id":
                 continue
-            for a in schema["field_aliases"].get(field, [field]):
+            # 英文字段名本身也算别名：field_aliases 只列了中文说法，
+            # 照 CARD_FIELDS / --list-types 写 `- personality：xxx` 时也要认得出来
+            for a in [field] + list(schema["field_aliases"].get(field, [])):
                 if a in kv:
                     card[field] = kv[a]
                     break
