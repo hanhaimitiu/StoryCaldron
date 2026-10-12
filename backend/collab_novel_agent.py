@@ -51,6 +51,12 @@ ROLE_TEMPERATURES = {
 
 _llm_cache: Dict[float, ChatOpenAI] = {}
 
+# 本地 llama.cpp 服务在 keep-alive 连接复用时会每隔一次返回 404（服务端连接复用 bug），
+# 加 Connection: close 让每次请求都新建连接即可规避。接正常服务可置 False。
+LLM_FORCE_CONNECTION_CLOSE = True
+LLM_MAX_RETRIES = 3
+
+
 def get_llm(temperature: float = 0.6) -> ChatOpenAI:
     """按温度取 LLM 实例（缓存），避免导入时因缺 Key 报错，也让各角色温度不同。"""
     if temperature not in _llm_cache:
@@ -58,12 +64,16 @@ def get_llm(temperature: float = 0.6) -> ChatOpenAI:
             "LLM_API_KEY",
             "sk-0a9abe3a8a2241079b881333fad52c1a",
         )
+        extra = {}
+        if LLM_FORCE_CONNECTION_CLOSE:
+            extra["default_headers"] = {"Connection": "close"}
         _llm_cache[temperature] = ChatOpenAI(
             model=os.environ.get("LLM_MODEL", "glm-5"),
             api_key=api_key,
             base_url=os.environ.get("LLM_BASE_URL", "http://localhost:8080"),
             temperature=temperature,
             max_tokens=16384,
+            **extra,
         )
     return _llm_cache[temperature]
 
@@ -73,13 +83,20 @@ def _call_llm(
     system: str = "你是一位专业的小说创作助手。",
     temperature: float = 0.7,
 ) -> str:
-    """调用大模型，失败时返回空字符串供上层降级处理。temperature 控制角色温度。"""
-    try:
-        messages = [SystemMessage(content=system), HumanMessage(content=prompt)]
-        return get_llm(temperature).invoke(messages).content.strip()
-    except Exception as e:
-        print(f"⚠️ LLM 调用失败: {e}")
-        return ""
+    """
+    调用大模型，失败时返回空字符串供上层降级处理。
+    temperature 控制角色温度；失败自动重试（服务端偶发 404/超时时有用）。
+    """
+    messages = [SystemMessage(content=system), HumanMessage(content=prompt)]
+    last_err = None
+    for attempt in range(LLM_MAX_RETRIES):
+        try:
+            return get_llm(temperature).invoke(messages).content.strip()
+        except Exception as e:
+            last_err = e
+            print(f"⚠️ LLM 调用失败（第 {attempt + 1}/{LLM_MAX_RETRIES} 次）: {e}")
+    print(f"❌ LLM 调用最终失败: {last_err}")
+    return ""
 
 
 # ---------------------------------------------------------------------------
