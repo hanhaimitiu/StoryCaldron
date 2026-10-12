@@ -120,6 +120,29 @@ set LLM_BASE_URL=http://localhost:8080
 | `new-card --type <t> [--data '<json>']` | 新建一张卡；`--data` 直传 JSON 则免交互 |
 | `setup` | 向导式依次建立各类素材卡 |
 | `write` | 在项目内写一章 |
+| `import-md <md> [--no-llm] [--no-merge]` | **独立工具**：把 Markdown 设定转成卡片 JSON（不进入小说流程） |
+
+> **素材卡的另一种来源：用 Markdown 写设定，一键转 JSON**
+>
+> 如果你更习惯用 Markdown 自由书写人物小传、世界观设定，可以用独立的转换工具 `backend/md_to_cards.py` 把它转成项目里的五类卡片，再交给 `write` 去读卡写小说。**这一步是建卡工具，不是小说生成流程的一部分。**
+>
+> ```bash
+> # 先看书写模板（二级标题分大类、三级标题分单张卡）
+> .venv\Scripts\python.exe backend\md_to_cards.py --template
+>
+> # 把设定.md 转进某个项目（写入 <project>/cards/）
+> .venv\Scripts\python.exe backend\md_to_cards.py 设定.md --project projects/mybook
+>
+> # 或直接出 JSON 到某个目录（不建项目脚手架）
+> .venv\Scripts\python.exe backend/md_to_cards.py 设定.md --out ./mycards
+>
+> # 大模型不可用时也能用：纯规则解析（按「- 字段：值」提取）
+> .venv\Scripts\python.exe backend\md_to_cards.py 设定.md --project projects/mybook --no-llm
+> ```
+>
+> 工具会优先用大模型读懂自由书写的散文式设定并结构化；大模型不可用时自动退回到按 bullet 提取的规则解析。写入时按卡片 `id` 合并已有卡片，重复运行可增量更新。
+>
+> 也可走 `run_chapter.py` 同一入口：`run_chapter.py import-md 设定.md --project projects/mybook`。
 
 `write` 的更多参数：
 

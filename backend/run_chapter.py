@@ -5,6 +5,10 @@ StoryCaldron 多 Agent 协作小说创作 —— 命令行入口（项目模式�
 
 每个小说是一个「项目目录」，里面自己管理素材卡和章节正文。用法：
 
+    # 0)（推荐）用 Markdown 写设定，一键转成卡片（独立工具，不进小说流程）
+    .venv\\Scripts\\python.exe backend\\run_chapter.py import-md 设定.md --project projects/mybook
+    #    MD 书写模板：python backend/md_to_cards.py --template
+
     # 1) 新建一个项目（--demo 直接塞一套演示卡，方便第一次试跑）
     .venv\\Scripts\\python.exe backend\\run_chapter.py init --project projects/mybook --demo
 
@@ -295,6 +299,25 @@ def cmd_setup(args):
     print(f"\n✅ 项目素材卡建立完成：{root}")
 
 
+def cmd_import_md(args):
+    """把 MD 设定转成卡片（独立工具，不进入小说生成流程）。"""
+    from md_to_cards import convert_to_project
+
+    root = proj.resolve_project(args.project)
+    stats, _ = convert_to_project(
+        args.md, root, use_llm=not args.no_llm, merge=not args.no_merge
+    )
+    target = os.path.join(root, proj.CARDS_DIR)
+    print("\n=== 转换完成 ===")
+    if not stats:
+        print("未从 MD 中识别到任何卡片。二级标题需包含："
+              "人物 / 剧情 / 文风 / 伏笔 / 世界观 等关键词。")
+        return
+    for ctype, cnt in stats.items():
+        print(f"  {proj.CARD_TYPES[ctype][1]}：{cnt} 张")
+    print(f"\n输出位置：{target}")
+
+
 def cmd_write(args):
     root = proj.resolve_project(args.project)
     # 写章节前确保项目存在（不存在则自动创建空项目）
@@ -382,6 +405,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--worlds", default="", help="世界观卡 id，逗号分隔；留空=全部")
     sp.add_argument("--auto", action="store_true", help="跳过人工审核，自动通过后跑完")
 
+    # import-md（独立工具：MD -> 卡片 JSON，不进入小说生成流程）
+    sp = sub.add_parser("import-md", parents=[common],
+                        help="把 Markdown 设定转成卡片 JSON（独立工具）")
+    sp.add_argument("md", help="Markdown 设定文件或目录")
+    sp.add_argument("--no-llm", action="store_true", help="不使用大模型，纯规则解析")
+    sp.add_argument("--no-merge", action="store_true", help="不合并已有卡片，直接覆盖")
+
     return p
 
 
@@ -399,6 +429,8 @@ def main():
         cmd_setup(args)
     elif cmd == "write":
         cmd_write(args)
+    elif cmd == "import-md":
+        cmd_import_md(args)
     else:
         build_parser().print_help()
 
