@@ -556,7 +556,17 @@ def fix_issues_node(state: CollabNovelState) -> CollabNovelState:
 def style_edit_node(state: CollabNovelState) -> CollabNovelState:
     print("\n--- 🎨 文风润色 ---")
 
-    prompt = f"""你是一位小说文风编辑。请根据文风卡对当前草稿进行润色，使全文风格统一、语言精炼。
+    # 若上一轮已润色过，则基于已润色稿再改；否则基于原始草稿。
+    # 这样人工提出「revise」后重排，不会丢掉之前的润色成果。
+    base_draft = state.get("style_edited_draft") or state.get("draft", "")
+
+    # 人工修改意见（首次为空的，revise 后才有），必须让润色落实
+    feedback = state.get("human_feedback", "")
+    feedback_block = ""
+    if feedback:
+        feedback_block = f"\n【人工修改意见（必须逐条落实）】\n{feedback}\n"
+
+    prompt = f"""你是一位小说文风编辑。请根据文风卡对当前草稿进行润色，使风格统一、语言精炼。
 
 {format_cards(state.get('style_cards', []), '文风卡')}
 
@@ -564,23 +574,25 @@ def style_edit_node(state: CollabNovelState) -> CollabNovelState:
 {state.get('chapter_plan', '无')}
 
 【当前草稿】
-{state.get('draft', '')}
-
+{base_draft}
+{feedback_block}
 要求：
 1. 保留情节和人物行为不变；
-2. 仅调整句式、用词、节奏，使其符合文风卡要求；
-3. 直接输出润色后的完整正文。
+2. 调整句式、用词、节奏，使其符合文风卡要求；
+3. 若存在人工修改意见，必须优先、逐条落实；
+4. 直接输出修改后的完整正文。
 """
 
     edited = _call_llm(prompt, system="你是一位对文字敏感的文风编辑。",
                        temperature=ROLE_TEMPERATURES["style_editor"])
 
     if not edited:
-        edited = state.get("draft", "")
+        edited = base_draft
 
     return {
         **state,
         "style_edited_draft": edited,
+        "style_revise_count": state.get("style_revise_count", 0) + 1,
         "current_stage": "style_edited",
     }
 
