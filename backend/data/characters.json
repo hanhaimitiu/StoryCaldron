@@ -1,0 +1,11 @@
+{
+  "hero": {
+    "id": "hero",
+    "name": "陆青崖",
+    "gender": "男",
+    "appearance": "青色长袍，眉间有一道旧疤",
+    "personality": "沉稳、重情义，遇到不公会挺身而出",
+    "identity": "青云宗外门弟子",
+    "ability": "剑术初入门槛，体内封印未解"
+  }
+}

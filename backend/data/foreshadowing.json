@@ -1,0 +1,27 @@
+{
+  "fore_1": {
+    "id": "fore_1",
+    "content": "陆青崖眉间旧疤与秘境中的古剑有神秘联系",
+    "status": "resolved"
+  },
+  "fore_2": {
+    "id": "fore_2",
+    "content": "古剑共鸣导致陆青崖体内封印出现裂痕，灵气变得躁动不安，存在走火入魔或实力爆发的风险",
+    "status": "in_progress"
+  },
+  "fore_3": {
+    "id": "fore_3",
+    "content": "古剑虚影给陆青崖带来‘守护’与‘杀伐’并存的复杂感觉，其具体来历不明，增加神秘感",
+    "status": "resolved"
+  },
+  "fore_4": {
+    "id": "fore_4",
+    "content": "妖兽集体狂暴且眼神中残留恐惧，暗示断魂林中有黑手操控或存在更深层的异常气息",
+    "status": "in_progress"
+  },
+  "fore_5": {
+    "id": "fore_5",
+    "content": "执法长老察觉异常波动，对陆青崖产生怀疑并暗中监视，宗门内部压力初显",
+    "status": "pending"
+  }
+}
