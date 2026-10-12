@@ -81,9 +81,29 @@ set LLM_BASE_URL=http://localhost:8080
 - **伏笔卡** (`foreshadowing.json`)
 - **世界观卡** (`wordviews.json`)
 
-#### 用法一：命令行入口（推荐，项目模式）
+#### 用法一：网页工作台（推荐）
 
-`backend/run_chapter.py` 是日常使用的入口。**每个小说是一个项目目录**，素材卡和章节正文都放在该项目里，互不干扰、天然隔离。换一本书就换一个 `--project` 目录。
+`backend/web_server.py` 是 HTTP 接口服务，`web/` 是 Vue 3 + Vite 前端。界面按常见 Agent 工作台组织：左侧项目列表、中间多个 Agent 的执行流、底部发起创作；跑到「人工审核」会弹出确认卡，让你选 **通过 / 提修改意见 / 直接给全文 / 终止**。
+
+```bash
+# 1) 装前端依赖（仅第一次）
+cd web && npm install
+
+# 2) 开发模式：起两个进程
+.venv\Scripts\python.exe backend\web_server.py   # 8765，提供 /api
+cd web && npm run dev                            # 5173，已配好 /api 代理到 8765
+# 浏览器打开 http://127.0.0.1:5173
+
+# 3) 生产模式：构建后由 Python 服务单端口托管
+cd web && npm run build
+.venv\Scripts\python.exe backend\web_server.py   # 打开 http://127.0.0.1:8765
+```
+
+网页上可以做的事：新建/切换项目、五类素材卡增删改、把 Markdown 设定转成卡片、写一章并实时看到每个 Agent 节点的耗时与输出、浏览已写章节正文。
+
+#### 用法二：命令行入口（项目模式）
+
+`backend/run_chapter.py` 是命令行入口。**每个小说是一个项目目录**，素材卡和章节正文都放在该项目里，互不干扰、天然隔离。换一本书就换一个 `--project` 目录。
 
 ```bash
 # 1) 新建项目（--demo 直接塞一套演示卡，方便第一次试跑）
@@ -181,7 +201,7 @@ projects/mybook/
 
 写作过程中，Agent 会**自动把本章新出场的人物、新补充的世界观落成卡片**写回 `cards/`，伏笔/剧情的进度更新也会回写——也就是「读卡 + 建卡 + 写小说」都发生在同一个项目目录里。定稿按 `chapter_001.txt` 顺序写入 `chapters/`，并在 `project.json` 登记章节索引。
 
-#### 用法二：自带演示脚本
+#### 用法三：自带演示脚本
 
 ```bash
 .venv\Scripts\python.exe backend\collab_novel_agent.py
@@ -241,12 +261,21 @@ set LLM_BASE_URL=http://your-host:port/v1
 StoryCaldron/
 ├── backend/
 │   ├── run_chapter.py          # 命令行入口（项目模式，日常使用）
+│   ├── web_server.py           # 网页服务：HTTP 接口 + 托管前端构建产物
 │   ├── collab_novel_agent.py   # 多 Agent 协作小说创作工作流
 │   ├── project.py              # 项目工作区管理（卡片读写、章节落盘、脚手架）
-│   ├── ReadNovelAgent.py       # 小说解析 Agent
-│   ├── WriteNovelAgent.py      # 小说写作 Agent (LangGraph)
+│   ├── md_to_cards.py          # 独立工具：Markdown 设定 -> 卡片 JSON
+│   ├── setting_template.md     # Markdown 设定书写模板
 │   ├── output/                 # 演示模式定稿输出目录
 │   └── data/                   # 演示模式素材卡目录
+├── web/                        # 前端（Vue 3 + Vite，Agent 工作台界面）
+│   ├── src/
+│   │   ├── api.js              # 后端接口封装 + Agent 角色表
+│   │   ├── store.js            # 全局状态与写作轮询
+│   │   ├── App.vue
+│   │   └── components/         # SideBar / AgentStream / ReviewCard / Composer / Drawer
+│   ├── package.json
+│   └── vite.config.js          # /api 代理到 8765
 ├── projects/                   # 各小说项目工作区（init/cards/write 都在这）
 ├── .gitignore
 ├── README.md

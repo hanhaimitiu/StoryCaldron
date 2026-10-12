@@ -1,7 +1,10 @@
-# 前端依赖：指定frontend下的node_modules
-frontend/node_modules/
-# 前端打包产物
-frontend/dist/
+# 前端依赖与构建产物（Vue 工程在 web/）
+web/node_modules/
+web/dist/
+
+# npm 缓存：为避免占用 C 盘，已重定向到项目下
+.npm-cache/
+.npm-global/
 
 # 小说项目工作区（用户的书稿与素材卡，按项目目录隔离，不入库）
 projects/
