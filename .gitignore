@@ -3,6 +3,9 @@ frontend/node_modules/
 # 前端打包产物
 frontend/dist/
 
+# 小说项目工作区（用户的书稿与素材卡，按项目目录隔离，不入库）
+projects/
+
 # Python 缓存文件
 __pycache__/
 *.pyc
