@@ -51,6 +51,11 @@ ROLE_TEMPERATURES = {
 
 _llm_cache: Dict[float, ChatOpenAI] = {}
 
+# 默认指向本地 llama.cpp 模型（可用环境变量覆盖）
+DEFAULT_LLM_MODEL = r"F:\llm_model\Qwen3.6-35B-A3B-UD-Q3_K_M.gguf"
+DEFAULT_LLM_BASE_URL = "http://localhost:8080/v1"
+DEFAULT_LLM_API_KEY = "dummy"
+
 # 本地 llama.cpp 服务在 keep-alive 连接复用时会每隔一次返回 404（服务端连接复用 bug），
 # 加 Connection: close 让每次请求都新建连接即可规避。接正常服务可置 False。
 LLM_FORCE_CONNECTION_CLOSE = True
@@ -60,17 +65,14 @@ LLM_MAX_RETRIES = 3
 def get_llm(temperature: float = 0.6) -> ChatOpenAI:
     """按温度取 LLM 实例（缓存），避免导入时因缺 Key 报错，也让各角色温度不同。"""
     if temperature not in _llm_cache:
-        api_key = os.environ.get(
-            "LLM_API_KEY",
-            "sk-0a9abe3a8a2241079b881333fad52c1a",
-        )
+        api_key = os.environ.get("LLM_API_KEY") or DEFAULT_LLM_API_KEY
         extra = {}
         if LLM_FORCE_CONNECTION_CLOSE:
             extra["default_headers"] = {"Connection": "close"}
         _llm_cache[temperature] = ChatOpenAI(
-            model=os.environ.get("LLM_MODEL", "glm-5"),
+            model=os.environ.get("LLM_MODEL") or DEFAULT_LLM_MODEL,
             api_key=api_key,
-            base_url=os.environ.get("LLM_BASE_URL", "http://localhost:8080"),
+            base_url=os.environ.get("LLM_BASE_URL") or DEFAULT_LLM_BASE_URL,
             temperature=temperature,
             max_tokens=16384,
             **extra,
@@ -948,6 +950,55 @@ def submit_human_action(
     }
 
 
+def run_with_manual_review(
+    state: CollabNovelState,
+    reviews: List[Dict[str, Any]],
+) -> CollabNovelState:
+    """
+    带真实暂停的运行方式：每次流程停在 human_review 前，就取一条 review 应用后继续。
+
+    reviews 是人工动作列表，每个元素形如：
+        {"action": "approved"}
+        {"action": "revise", "feedback": "……修改意见……"}
+        {"action": "edit", "edited_draft": "……人工改后的全文……"}
+    列表用完仍未结束时，后续暂停一律按 approved 处理。
+    返回最终状态。
+    """
+    sid = state.get("session_id", uuid.uuid4().hex)
+    config = {"configurable": {"thread_id": sid}}
+
+    print("\n▶️ 开始执行（将在人工审核处真实暂停）")
+    app.invoke(state, config)
+
+    idx = 0
+    while True:
+        gs = app.get_state(config)
+        if not gs.next:
+            print("🏁 工作流结束")
+            break
+        if "human_review" not in gs.next:
+            print(f"⚠️ 停在非预期节点 {gs.next}，停止")
+            break
+
+        # —— 这里是真实的暂停点，模拟人工介入 ——
+        review = reviews[idx] if idx < len(reviews) else {"action": "approved"}
+        idx += 1
+        print(f"\n⏸️ 已暂停在人工审核，应用第 {idx} 次人工动作：{review}")
+
+        updates: Dict[str, Any] = {
+            "waiting_for_human": False,
+            "human_action": review.get("action", "approved"),
+            "human_feedback": review.get("feedback", ""),
+        }
+        if review.get("action") == "edit":
+            updates["style_edited_draft"] = review.get("edited_draft", "")
+
+        app.update_state(config, updates)
+        app.invoke(None, config)
+
+    return app.get_state(config).values
+
+
 # ---------------------------------------------------------------------------
 # 测试入口
 # ---------------------------------------------------------------------------
@@ -999,7 +1050,15 @@ if __name__ == "__main__":
         previous_summary="陆青崖自幼被青云宗长老收养，今日迎来外门考核。",
     )
 
-    final_state = run_session(result["state"], auto_approve_human=True)
+    # 演示【真实暂停】：第一次停在人工审核时提修改意见（流程回到文风润色重排后再停），
+    # 第二次停在人工审核时点通过，流程继续到提交定稿。
+    # 若想跳过人工介入快速跑完，可改用 run_session(result["state"], auto_approve_human=True)
+    final_state = run_with_manual_review(result["state"], reviews=[
+        {"action": "revise",
+         "feedback": "开头环境描写太满，压缩成两三句，尽快让妖兽冲突出现。"},
+        {"action": "approved"},
+    ])
+
     print("\n=== 最终状态 ===")
     print(f"阶段：{final_state.get('current_stage')}")
     print(f"计划通过：{final_state.get('plan_approved')}")
