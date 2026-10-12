@@ -13,7 +13,8 @@ env/
 venv/
 .venv/
 
-# 编辑器、系统文件
+# 编辑器/工具缓存
+.workbuddy/
 .idea/
 .vscode/
 *.log
