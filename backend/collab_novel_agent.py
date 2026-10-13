@@ -867,6 +867,18 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
             f.write(f"# {state.get('chapter_title', '未命名章节')}\n\n")
             f.write(final_text)
 
+    # #4 正典落盘：审批通过的正典提案追加写入项目的 canon.md（演示模式写 OUTPUT_DIR/canon.md），
+    # 形成持续累积的「小说圣经」，供后续章节作为权威事实源。
+    if state.get("canon_proposal") and state.get("canon_approved"):
+        canon_root = project_dir or OUTPUT_DIR
+        try:
+            canon_path = proj.append_canon(
+                canon_root, state.get("chapter_title", "未命名章节"), state["canon_proposal"]
+            )
+            print(f"   正典已追加：{canon_path}")
+        except Exception as e:
+            print(f"⚠️ 正典落盘失败: {e}")
+
     print(f"   定稿已保存：{path}")
 
     return {
