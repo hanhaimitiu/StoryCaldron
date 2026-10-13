@@ -252,6 +252,43 @@ def append_canon(root: str, chapter_title: str, proposal: str) -> str:
     return path
 
 
+def load_outline(root: str) -> str:
+    """读取全书大纲/结构圣经（outline.md）；不存在返回空串。对应 #2。"""
+    path = os.path.join(root, "outline.md")
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def save_outline(root: str, text: str) -> str:
+    """整体覆盖写入全书大纲（outline.md），供用户在 UI 里手动编辑结构圣经。对应 #2。"""
+    path = os.path.join(root, "outline.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
+
+
+def append_outline_entry(root: str, title: str, summary: str, no: int = 0) -> str:
+    """结构圣经演进（#2）：定稿后把本章进展追加进 outline.md。
+
+    no 为章节序号（项目模式从 project.json 取，演示模式传 0）；summary 为章节计划首行摘要。
+    文件不存在时先写一级标题。返回 outline.md 路径。
+    """
+    path = os.path.join(root, "outline.md")
+    stamp = datetime.now().isoformat(timespec="seconds")
+    new_file = not os.path.exists(path)
+    head = f"- 第{no}章 《{title}》：{summary}\n" if no else f"- 《{title}》：{summary}\n"
+    block = (("# 全书大纲（Outline / 结构圣经）\n\n" if new_file else "")
+             + f"<!-- {stamp} -->\n{head}")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(block)
+    return path
+
+
 def clear_chapters(root: str) -> int:
     """清空项目所有章节：删除 chapters/ 下的 txt 文件并重置 project.json 的章节索引。
 

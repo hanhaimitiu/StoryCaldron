@@ -210,6 +210,7 @@ class CollabNovelState(TypedDict, total=False):
     chapter_outline: str
     previous_summary: str
     prior_chapters: str  # 跨章节检索得到的近期章节前情片段（#1）
+    book_outline: str    # 全书大纲/结构圣经（#2），规划节点参考、定稿后演进
 
     # 加载的素材卡
     character_cards: List[Dict[str, Any]]
@@ -352,6 +353,8 @@ def plan_chapter_node(state: CollabNovelState) -> CollabNovelState:
 {format_cards(state.get('worldview_cards', []), '世界观卡')}
 
 {f"【前文片段（近期章节，用于保持连续性）】\n" + state["prior_chapters"] if state.get("prior_chapters") else ""}
+
+{f"【全书大纲 / 结构圣经（本章规划需与之对齐）】\n" + state["book_outline"] if state.get("book_outline") else ""}
 
 请输出：
 1. 本章核心目标（本章要解决什么问题、推动哪条剧情线）
@@ -879,6 +882,30 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
         except Exception as e:
             print(f"⚠️ 正典落盘失败: {e}")
 
+    # #2 结构圣经：定稿后把本章进展追加进全书大纲（outline.md），形成持续演进的结构圣经。
+    if state.get("chapter_plan"):
+        brief = ""
+        for ln in state["chapter_plan"].splitlines():
+            if ln.strip():
+                brief = ln.strip()[:140]
+                break
+        if not brief:
+            brief = (state.get("previous_summary") or state.get("chapter_title", ""))[:140]
+        outline_root = project_dir or OUTPUT_DIR
+        no = 0
+        if project_dir:
+            try:
+                no = len(proj.read_meta(project_dir).get("chapters", []))
+            except Exception:
+                no = 0
+        try:
+            outline_path = proj.append_outline_entry(
+                outline_root, state.get("chapter_title", "未命名章节"), brief, no
+            )
+            print(f"   大纲已演进：{outline_path}")
+        except Exception as e:
+            print(f"⚠️ 大纲落盘失败: {e}")
+
     print(f"   定稿已保存：{path}")
 
     return {
@@ -980,12 +1007,17 @@ def start_session(
         if not previous_summary:
             previous_summary = proj.get_recent_chapter_excerpts(project_dir, recent_n=1, tail_chars=500)
 
+    # —— 全书大纲/结构圣经（#2）——
+    # 项目模式加载 outline.md，供规划节点对齐整体走向；定稿后再把本章进展追加回去。
+    book_outline = proj.load_outline(project_dir) if project_dir else ""
+
     initial_state: CollabNovelState = {
         "session_id": sid,
         "chapter_title": chapter_title,
         "chapter_outline": chapter_outline,
         "previous_summary": previous_summary,
         "prior_chapters": prior_chapters,
+        "book_outline": book_outline,
         "character_cards": load_card_file("characters.json", character_ids, cards_dir),
         "plot_cards": load_card_file("stories.json", plot_ids, cards_dir) or load_card_file("plots.json", plot_ids, cards_dir),
         "style_cards": load_card_file("styles.json", style_ids, cards_dir),

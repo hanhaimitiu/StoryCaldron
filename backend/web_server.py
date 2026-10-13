@@ -295,6 +295,22 @@ def api_read_chapter(query):
         return {"file": fname, "content": f.read()}
 
 
+def api_outline(query):
+    """读取全书大纲/结构圣经（outline.md）。query: {project}。对应 #2。"""
+    root = resolve_project_arg(query.get("project"))
+    proj.ensure_project(root)
+    return {"project": root, "outline": proj.load_outline(root)}
+
+
+def api_outline_save(body):
+    """整体覆盖保存全书大纲（outline.md）。body: {project, outline}。对应 #2。"""
+    root = resolve_project_arg(body.get("project"))
+    proj.ensure_project(root)
+    text = str(body.get("outline", ""))
+    path = proj.save_outline(root, text)
+    return {"ok": True, "project": root, "path": path}
+
+
 def api_write_start(body):
     root = resolve_project_arg(body.get("project"))
     proj.ensure_project(root)
@@ -601,6 +617,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, api_list_chapters(one))
                 if path == "/api/chapter":
                     return self._json(200, api_read_chapter(one))
+                if path == "/api/outline":
+                    return self._json(200, api_outline(one))
                 if path == "/api/write/status":
                     return self._json(200, api_write_status(one))
                 if path == "/api/parse-book/status":
@@ -640,6 +658,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api_write_action(body))
             if path == "/api/write/stop":
                 return self._json(200, api_write_stop(body))
+            if path == "/api/outline/save":
+                return self._json(200, api_outline_save(body))
             if path == "/api/parse-book":
                 return self._json(200, api_parse_book(body))
             if path == "/api/parse-book/commit":
