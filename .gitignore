@@ -31,3 +31,9 @@ venv/
 !requirements.txt
 
 *.xml
+
+# 会话持久化运行时文件（重启恢复用，不入库）
+backend/checkpoints.pkl
+backend/sessions.json
+*.pkl
+*.tmp

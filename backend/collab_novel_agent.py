@@ -19,6 +19,9 @@ import json
 import os
 import time
 import uuid
+import pickle
+import threading
+from collections import defaultdict
 from typing import TypedDict, Optional, List, Dict, Any
 from datetime import datetime
 from functools import wraps
@@ -27,7 +30,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.constants import START, END
 from langgraph.graph import StateGraph
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.memory import InMemorySaver
 
 import sys
 # 让同目录下的 project 模块可 import（commit 节点写章节、自动前情检索、正典落盘都会用到）
@@ -916,9 +919,73 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
 
 
 # ---------------------------------------------------------------------------
-# 构建 LangGraph
+# 检查点持久化（会话持久化 / 崩溃恢复，对应 #8）
 # ---------------------------------------------------------------------------
-checkpointer = MemorySaver()
+# 用落盘版 Checkpointer 替代内存级 MemorySaver：复用 InMemorySaver 的全部读写逻辑，
+# 仅在每次 put / put_writes 后把 storage / writes / blobs 整体 pickle 到磁盘，
+# 重启后按 thread_id（=sid）恢复；崩溃恢复时也能从最近一个检查点续跑。
+CHECKPOINT_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "checkpoints.pkl"
+)
+
+
+def _storage_inner_factory():
+    """可 pickle 的默认工厂（lambda 无法序列化，故用模块级函数）。"""
+    return defaultdict(dict)
+
+
+class FileCheckpointer(InMemorySaver):
+    """把检查点落盘到 CHECKPOINT_FILE 的 Checkpointer。"""
+
+    def __init__(self, path: str, *, serde=None):
+        super().__init__(serde=serde)
+        self._path = path
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        if not os.path.exists(self._path):
+            return
+        try:
+            with open(self._path, "rb") as f:
+                data = pickle.load(f)
+            self.storage = defaultdict(_storage_inner_factory, data.get("storage", {}) or {})
+            self.writes = defaultdict(dict, data.get("writes", {}) or {})
+            self.blobs = defaultdict(dict, data.get("blobs", {}) or {})
+        except Exception as e:
+            print(f"⚠️ 加载会话检查点失败（将新建）: {e}")
+
+    def _save(self):
+        # 转成可 pickle 的纯 dict 再写（避免 defaultdict 的 lambda 工厂无法序列化）
+        storage_plain = {t: dict(ns_map) for t, ns_map in self.storage.items()}
+        writes_plain = dict(self.writes)
+        blobs_plain = dict(self.blobs)
+        tmp = self._path + ".tmp"
+        with open(tmp, "wb") as f:
+            pickle.dump(
+                {"storage": storage_plain, "writes": writes_plain, "blobs": blobs_plain},
+                f, protocol=pickle.HIGHEST_PROTOCOL,
+            )
+        os.replace(tmp, self._path)
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        with self._lock:
+            ret = super().put(config, checkpoint, metadata, new_versions)
+            self._save()
+        return ret
+
+    def put_writes(self, config, writes, task_id, task_path=""):
+        with self._lock:
+            super().put_writes(config, writes, task_id, task_path)
+            self._save()
+
+    def delete_thread(self, thread_id):
+        with self._lock:
+            super().delete_thread(thread_id)
+            self._save()
+
+
+checkpointer = FileCheckpointer(CHECKPOINT_FILE)
 
 graph = StateGraph(CollabNovelState)
 graph.add_node("load_context", load_context_node)

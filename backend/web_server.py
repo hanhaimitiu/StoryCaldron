@@ -68,6 +68,10 @@ MAX_DRIVE_LOOPS = 8
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
 
+# 会话注册表落盘路径：重启后据此恢复历史会话
+# （与 collab_novel_agent 的落盘 Checkpointer 配合，实现崩溃恢复 / 按 sid 恢复）
+SESSIONS_FILE = os.path.join(HERE, "sessions.json")
+
 # 拆书解析任务：task_id -> 运行时记录（与写作流同源的线程 + 轮询模式）
 BOOK_TASKS = {}
 BOOK_TASKS_LOCK = threading.Lock()
@@ -134,6 +138,7 @@ def _drive(sid):
         for _ in range(MAX_DRIVE_LOOPS):
             if s.get("stop"):
                 s["status"] = "stopped"
+                _save_sessions()
                 return
 
             if not s.get("started"):
@@ -148,19 +153,23 @@ def _drive(sid):
             if "human_review" in nxt:
                 s["status"] = "waiting"
                 s["round"] = s.get("round", 0) + 1
+                _save_sessions()
                 return
 
             if not nxt:
                 s["status"] = "done"
                 s["chapter_file"] = last_chapter_path(s.get("project"), values)
+                _save_sessions()
                 return
 
         # 兜底：循环次数用尽仍未结束，按完成处理，避免前端永远转圈
         s["status"] = "done"
         s["chapter_file"] = last_chapter_path(s.get("project"), s["state"])
+        _save_sessions()
     except Exception:
         s["status"] = "error"
         s["error"] = traceback.format_exc()
+        _save_sessions()
 
 
 def _start_thread(sid):
@@ -168,6 +177,111 @@ def _start_thread(sid):
     with SESSIONS_LOCK:
         SESSIONS[sid]["thread"] = t
     t.start()
+
+
+# ---------------------------------------------------------------------------
+# 会话持久化 / 崩溃恢复（#8）：把会话注册表落盘，重启后按 sid 恢复
+# ---------------------------------------------------------------------------
+def _save_sessions():
+    """把内存中的 SESSIONS 元信息（不含大块 state）落盘到 sessions.json。"""
+    with SESSIONS_LOCK:
+        data = {
+            sid: {
+                "project": s.get("project", ""),
+                "title": s.get("title", ""),
+                "status": s.get("status", "running"),
+                "round": s.get("round", 0),
+                "chapter_file": s.get("chapter_file", ""),
+                "created_at": s.get("created_at", ""),
+            }
+            for sid, s in SESSIONS.items()
+        }
+    try:
+        tmp = SESSIONS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, SESSIONS_FILE)
+    except Exception as e:
+        print(f"⚠️ 保存会话注册表失败: {e}")
+
+
+def _load_sessions():
+    """启动时读取 sessions.json，把历史会话重建进 SESSIONS；
+    此前处于 running 的会话（如服务崩溃）会重新起线程续跑。"""
+    if not os.path.exists(SESSIONS_FILE):
+        return
+    try:
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"⚠️ 读取会话注册表失败: {e}")
+        return
+    with SESSIONS_LOCK:
+        for sid, meta in data.items():
+            if sid in SESSIONS:
+                continue
+            SESSIONS[sid] = {
+                "sid": sid,
+                "project": meta.get("project", ""),
+                "title": meta.get("title", ""),
+                "state": {},
+                "status": meta.get("status", "waiting"),
+                "started": meta.get("status") in ("running", "waiting", "done"),
+                "stop": False,
+                "round": meta.get("round", 0),
+                "error": "",
+                "chapter_file": meta.get("chapter_file", ""),
+                "thread": None,
+                "created_at": meta.get("created_at", ""),
+            }
+    # 崩溃恢复：把此前仍在跑（running）的会话重新起线程续跑
+    for sid, s in list(SESSIONS.items()):
+        if s.get("status") == "running" and (not s.get("thread") or not s["thread"].is_alive()):
+            _start_thread(sid)
+    print(f"[会话恢复] 已从磁盘恢复 {len(data)} 个历史会话")
+
+
+def _ensure_session(sid):
+    """若 sid 不在内存 SESSIONS 中，尝试从注册表或检查点恢复，避免 status/action 误报 404。"""
+    with SESSIONS_LOCK:
+        if sid in SESSIONS:
+            return SESSIONS[sid]
+    meta = {}
+    if os.path.exists(SESSIONS_FILE):
+        try:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                meta = json.load(f).get(sid, {})
+        except Exception:
+            meta = {}
+    if not meta:
+        # 检查点里是否真有这个 thread
+        try:
+            gs = agent.app.get_state(_config(sid))
+            if not (gs.values or gs.next):
+                return None
+        except Exception:
+            return None
+    entry = {
+        "sid": sid,
+        "project": meta.get("project", ""),
+        "title": meta.get("title", ""),
+        "state": {},
+        "status": meta.get("status", "waiting"),
+        "started": meta.get("status") in ("running", "waiting", "done"),
+        "stop": False,
+        "round": meta.get("round", 0),
+        "error": "",
+        "chapter_file": meta.get("chapter_file", ""),
+        "thread": None,
+        "created_at": meta.get("created_at", ""),
+    }
+    with SESSIONS_LOCK:
+        if sid not in SESSIONS:
+            SESSIONS[sid] = entry
+    # 若此前在跑（崩溃遗留），补起线程续跑
+    if entry.get("status") == "running" and (not entry.get("thread") or not entry["thread"].is_alive()):
+        _start_thread(sid)
+    return entry
 
 
 def ids_of(raw):
@@ -332,6 +446,7 @@ def api_write_start(body):
         SESSIONS[sid] = {
             "sid": sid,
             "project": root,
+            "title": body.get("title", ""),
             "state": state,
             "status": "running",
             "started": False,
@@ -340,15 +455,16 @@ def api_write_start(body):
             "error": "",
             "chapter_file": "",
             "thread": None,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
+    _save_sessions()
     _start_thread(sid)
     return {"sid": sid, "project": root}
 
 
 def api_write_status(query):
     sid = str(query.get("sid", ""))
-    with SESSIONS_LOCK:
-        s = SESSIONS.get(sid)
+    s = _ensure_session(sid)
     if not s:
         raise KeyError(f"会话不存在: {sid}")
 
@@ -378,8 +494,7 @@ def api_write_status(query):
 def api_write_action(body):
     """提交人工审核动作：approved / revise / edit / quit。"""
     sid = str(body.get("sid", ""))
-    with SESSIONS_LOCK:
-        s = SESSIONS.get(sid)
+    s = _ensure_session(sid)
     if not s:
         raise KeyError(f"会话不存在: {sid}")
 
@@ -387,6 +502,7 @@ def api_write_action(body):
     if action == "quit":
         s["stop"] = True
         s["status"] = "stopped"
+        _save_sessions()
         return {"ok": True, "status": "stopped"}
 
     if action not in ("approved", "revise", "edit"):
@@ -402,6 +518,7 @@ def api_write_action(body):
 
     agent.app.update_state(_config(sid), updates)
     s["status"] = "running"
+    _save_sessions()
     _start_thread(sid)
     return {"ok": True, "status": "running"}
 
@@ -413,6 +530,7 @@ def api_write_stop(body):
     if s:
         s["stop"] = True
         s["status"] = "stopped"
+        _save_sessions()
     return {"ok": True}
 
 
@@ -678,6 +796,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("PORT", DEFAULT_PORT))
+    _load_sessions()  # 重启后从磁盘恢复历史会话（崩溃恢复 / 按 sid 恢复）
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"StoryCaldron 网页服务已启动： http://127.0.0.1:{port}")
     print(f"项目根目录：{PROJECTS_ROOT}")
