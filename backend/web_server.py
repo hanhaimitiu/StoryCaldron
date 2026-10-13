@@ -416,15 +416,15 @@ def _book_progress(task_id, done, total, msg):
                 rec["logs"] = rec["logs"][-200:]
 
 
-def _run_book_task(task_id, project_dir, txt, merge):
-    """后台线程：真正跑拆书，结束写 status=done/error/stopped。"""
+def _run_book_task(task_id, txt):
+    """后台线程：解析出预览方案（不写入），结束写 status=done/error/stopped。"""
     try:
         with BOOK_TASKS_LOCK:
             rec = BOOK_TASKS.get(task_id)
             if rec:
                 rec["status"] = "running"
-        stats = bookmod.parse_book(
-            txt, project_dir, merge=merge,
+        plan = bookmod.plan_book(
+            txt,
             progress_cb=lambda d, t, m: _book_progress(task_id, d, t, m),
             stop_check=lambda: BOOK_TASKS.get(task_id, {}).get("stop"),
         )
@@ -432,7 +432,12 @@ def _run_book_task(task_id, project_dir, txt, merge):
             rec = BOOK_TASKS.get(task_id)
             if rec:
                 rec["status"] = "stopped" if rec.get("stop") else "done"
-                rec["stats"] = stats
+                rec["_plan"] = plan  # 完整方案（含章节正文），仅服务端用于提交
+                rec["result"] = {
+                    "chapter_count": plan["chapter_count"],
+                    "chapters": [{"title": t, "chars": len(b)} for t, b in plan["chapters"]],
+                    "cards": plan["cards"],  # 各类型卡片（体积较小）
+                }
                 rec["progress"] = {"done": rec["progress"]["total"], "total": rec["progress"]["total"]}
     except Exception as e:
         with BOOK_TASKS_LOCK:
@@ -443,12 +448,10 @@ def _run_book_task(task_id, project_dir, txt, merge):
 
 
 def api_parse_book(body):
-    """启动一次拆书解析，返回 task_id。body: {project, name, text, merge}。"""
-    root = resolve_project_arg(body.get("project"))
+    """启动一次拆书解析（只解析不写入），返回 task_id。body: {project, name, text, merge}。"""
     txt = body.get("text") or ""
     if not txt.strip():
         raise ValueError("txt 内容为空")
-    merge = bool(body.get("merge", True))
     task_id = f"book_{uuid.uuid4().hex[:12]}"
     with BOOK_TASKS_LOCK:
         BOOK_TASKS[task_id] = {
@@ -458,27 +461,56 @@ def api_parse_book(body):
             "stats": {},
             "error": "",
             "stop": False,
-            "project": root,
+            "project": body.get("project") or "",
+            "merge": bool(body.get("merge", True)),
+            "result": None,
+            "_plan": None,
         }
-    t = threading.Thread(target=_run_book_task, args=(task_id, root, txt, merge), daemon=True)
+    t = threading.Thread(target=_run_book_task, args=(task_id, txt), daemon=True)
     t.start()
     return {"task_id": task_id}
 
 
 def api_parse_book_status(query):
-    """轮询任务进度。query: {task}。"""
+    """轮询任务进度与预览方案。query: {task}。"""
     task_id = str(query.get("task", ""))
     with BOOK_TASKS_LOCK:
         rec = BOOK_TASKS.get(task_id)
         if not rec:
             return {"status": "not_found"}
-    return {
-        "status": rec["status"],
-        "progress": rec["progress"],
-        "logs": rec["logs"],
-        "stats": rec["stats"],
-        "error": rec["error"],
-    }
+        return {
+            "status": rec["status"],
+            "progress": rec["progress"],
+            "logs": rec["logs"],
+            "stats": rec["stats"],
+            "error": rec["error"],
+            "result": rec["result"],
+        }
+
+
+def api_parse_book_commit(body):
+    """按勾选把预览方案写入项目。body: {task, project, merge, clear_chapters, chapters, cards}。"""
+    task_id = str(body.get("task", ""))
+    with BOOK_TASKS_LOCK:
+        rec = BOOK_TASKS.get(task_id)
+        if not rec or not rec.get("_plan"):
+            raise ValueError("任务不存在或尚未解析完成")
+        plan = rec["_plan"]
+        project = body.get("project") or rec.get("project") or ""
+        merge = bool(body.get("merge", rec.get("merge", True)))
+    root = resolve_project_arg(project)
+    stats = bookmod.commit_book(
+        root, plan,
+        chapter_idxs=body.get("chapters"),
+        card_ids=body.get("cards"),
+        merge=merge,
+        clear_chapters=bool(body.get("clear_chapters", False)),
+    )
+    with BOOK_TASKS_LOCK:
+        if rec:
+            rec["status"] = "committed"
+            rec["stats"] = stats
+    return {"stats": stats}
 
 
 def api_parse_book_stop(body):
@@ -610,6 +642,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api_write_stop(body))
             if path == "/api/parse-book":
                 return self._json(200, api_parse_book(body))
+            if path == "/api/parse-book/commit":
+                return self._json(200, api_parse_book_commit(body))
             if path == "/api/parse-book/stop":
                 return self._json(200, api_parse_book_stop(body))
             return self._json(404, {"error": f"未知接口 {path}"})

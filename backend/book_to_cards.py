@@ -11,8 +11,10 @@
 设计要点：
 - 复用 md_to_cards 的 CARD_SCHEMA / _extract_json / _apply_defaults / _merge 与 project 存储层，
   不重复造轮子；
-- 大模型不可用时，章节照常拆分落盘，但卡片提取为空（拆书的核心是 LLM，没有就只拆章）；
-- parse_book 接收 progress_cb(done, total, msg) 上报进度，便于前端做进度条/日志；
+- 两段式：plan_book 只解析不写入（切章+抽卡+跨章合并，供前端预览/勾选），
+  commit_book 按勾选把章节与卡片写入项目（支持「导入前清空已有章节」）；
+- 大模型不可用时，章节照常拆分，但卡片提取为空（拆书的核心是 LLM，没有就只拆章）；
+- plan_book 接收 progress_cb(done, total, msg) 上报进度，便于前端做进度条/日志；
 - 卡片按 id 合并，重跑同一本书可增量更新，不会整体覆盖。
 
 用法（调试用）：
@@ -172,35 +174,25 @@ def _normalize(ctype: str, card: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 收集与写入
+# 两段式：plan_book（只解析不写） + commit_book（按勾选写入）
 # ---------------------------------------------------------------------------
-def parse_book(
+def plan_book(
     txt: str,
-    project_dir: str,
-    merge: bool = True,
     progress_cb: Optional[Any] = None,
     stop_check: Optional[Any] = None,
-) -> Dict[str, int]:
-    """拆书主流程：切章 -> 落盘章节 -> 逐章抽卡 -> 跨章合并 -> 写卡片。
+) -> Dict[str, Any]:
+    """只解析、不写入：切章 + 逐章抽卡 + 跨章按 id 合并，返回方案供前端预览/勾选。
 
-    progress_cb(done, total, msg)：实时进度；stop_check() -> bool：返回 True 时中止。
-    返回统计 {chapters, character, plot, style, foreshadowing, worldview}。
+    返回 {"chapters": [(title, body), ...], "cards": {ctype: [card, ...]}, "chapter_count": N}。
+    模型不可用则 cards 为空；stop_check() 返回 True 时中止。
     """
-    proj.ensure_project(project_dir)
     chapters = split_chapters(txt)
     total = len(chapters)
     acc: Dict[str, Dict[str, Dict[str, Any]]] = {c: {} for c in CARD_SCHEMA}  # ctype -> id -> card
-    stats: Dict[str, int] = {"chapters": 0}
 
     for i, (title, body) in enumerate(chapters, 1):
         if stop_check and stop_check():
-            if progress_cb:
-                progress_cb(i - 1, total, "已终止")
             break
-        # 1) 章节落盘（复用项目存储层，自动续号并登记 project.json）
-        proj.add_chapter(project_dir, title, body)
-        stats["chapters"] += 1
-        # 2) 逐章抽卡
         extracted = extract_chapter(title, body)
         for ctype, cards in extracted.items():
             for card in cards:
@@ -213,17 +205,72 @@ def parse_book(
         if progress_cb:
             progress_cb(i, total, f"已处理：{title}")
 
-    # 3) 合并写卡
-    for ctype, by_id in acc.items():
-        items = list(by_id.values())
-        if merge and items:
+    return {
+        "chapters": chapters,  # list of (title, body)
+        "cards": {c: list(by_id.values()) for c, by_id in acc.items()},
+        "chapter_count": total,
+    }
+
+
+def commit_book(
+    project_dir: str,
+    plan: Dict[str, Any],
+    chapter_idxs: Optional[List[int]] = None,
+    card_ids: Optional[Dict[str, List[str]]] = None,
+    merge: bool = True,
+    clear_chapters: bool = False,
+) -> Dict[str, int]:
+    """按勾选把方案写入项目。
+
+    chapter_idxs: 要写入的章节下标列表（None=全部）；
+    card_ids: {ctype: [id, ...]} 要写入的卡片（None=全部）；
+    clear_chapters: 写入前清空已有章节（对应「导入前清空已有章节」选项）；
+    merge: 卡片与已有合并（True）或覆盖（False）。
+    返回统计 {chapters, character, plot, style, foreshadowing, worldview}。
+    """
+    proj.ensure_project(project_dir)
+    stats: Dict[str, int] = {"chapters": 0}
+
+    chapters = plan.get("chapters", [])
+    if clear_chapters:
+        proj.clear_chapters(project_dir)
+    sel = set(chapter_idxs) if chapter_idxs is not None else None
+    for idx, (title, body) in enumerate(chapters):
+        if sel is not None and idx not in sel:
+            continue
+        proj.add_chapter(project_dir, title, body)
+        stats["chapters"] += 1
+
+    for ctype, cards in plan.get("cards", {}).items():
+        if not cards:
+            continue
+        if card_ids:  # 前端指定了勾选
+            want = set(card_ids.get(ctype, []))
+            items = [c for c in cards if str(c.get("id", "")) in want]
+        else:
+            items = list(cards)
+        if not items:
+            continue
+        if merge:
             existing = proj.load_cards(project_dir, ctype)
             items = _merge(items, existing)
-        elif not items:
-            continue
         proj.save_cards(project_dir, ctype, items)
         stats[ctype] = len(items)
     return stats
+
+
+def parse_book(
+    txt: str,
+    project_dir: str,
+    merge: bool = True,
+    progress_cb: Optional[Any] = None,
+    stop_check: Optional[Any] = None,
+) -> Dict[str, int]:
+    """CLI 用：解析并立即全部写入（等价于 plan_book + commit_book 全选）。"""
+    plan = plan_book(txt, progress_cb, stop_check)
+    if stop_check and stop_check():
+        return {"chapters": 0}
+    return commit_book(project_dir, plan, None, None, merge, clear_chapters=False)
 
 
 # ---------------------------------------------------------------------------

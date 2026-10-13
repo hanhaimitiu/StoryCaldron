@@ -211,6 +211,27 @@ def read_meta(root: str) -> Dict[str, Any]:
     return _read_db(path)
 
 
+def clear_chapters(root: str) -> int:
+    """清空项目所有章节：删除 chapters/ 下的 txt 文件并重置 project.json 的章节索引。
+
+    只动章节，不碰 cards/。返回删除的章节数。对应「导入前清空已有章节」选项。
+    """
+    chapters_dir = os.path.join(root, CHAPTERS_DIR)
+    count = 0
+    if os.path.isdir(chapters_dir):
+        for fn in os.listdir(chapters_dir):
+            if fn.lower().endswith(".txt"):
+                try:
+                    os.remove(os.path.join(chapters_dir, fn))
+                    count += 1
+                except OSError:
+                    pass
+    meta = read_meta(root)
+    meta["chapters"] = []
+    write_meta(root, meta)
+    return count
+
+
 def write_meta(root: str, meta: Dict[str, Any]) -> None:
     _write_db(os.path.join(root, PROJECT_JSON), meta)
 
