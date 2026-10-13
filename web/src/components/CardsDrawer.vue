@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, reactive } from 'vue'
-import { store, saveCard, deleteCard, importMd, startParseBook, stopParseBook, closeDrawer, toast } from '../store'
+import { store, saveCard, deleteCard, importMd, startParseBook, stopParseBook, commitParseBook, closeDrawer, toast } from '../store'
 import { api } from '../api'
 
 const tab = ref('cards') // cards | md | book
@@ -68,11 +68,15 @@ async function runImport() {
 const types = computed(() => store.cardTypes || [])
 
 // ---- 拆书解析 ----
-const bookFile = ref(null)
 const bookName = ref('')
 const bookMerge = ref(true)
+const bookClear = ref(false) // 导入前清空已有章节
 const bookText = ref('')
 const bookRunning = computed(() => ['pending', 'running'].includes(store.parse.status))
+const CARD_LABELS = {
+  character: '人物卡', plot: '剧情卡', style: '文风卡',
+  foreshadowing: '伏笔卡', worldview: '世界观卡',
+}
 
 function onBookFile(e) {
   const f = e.target.files && e.target.files[0]
@@ -92,6 +96,44 @@ async function runParse() {
   }
   await startParseBook(bookText.value, bookName.value, bookMerge.value)
 }
+
+async function commitParse() {
+  if (!store.parse.task) {
+    toast('没有可写入的解析结果', true)
+    return
+  }
+  await commitParseBook(bookMerge.value, bookClear.value)
+}
+
+// 勾选辅助
+function isChSel(i) {
+  return store.parse.selChapters.includes(i)
+}
+function toggleCh(i) {
+  const arr = store.parse.selChapters
+  const k = arr.indexOf(i)
+  if (k >= 0) arr.splice(k, 1)
+  else arr.push(i)
+}
+function chAll(on) {
+  store.parse.selChapters = on && store.parse.result
+    ? store.parse.result.chapters.map((_, i) => i)
+    : []
+}
+function isCardSel(ctype, id) {
+  return (store.parse.selCards[ctype] || []).includes(String(id))
+}
+function toggleCard(ctype, id) {
+  const arr = store.parse.selCards[ctype] || (store.parse.selCards[ctype] = [])
+  const k = arr.indexOf(String(id))
+  if (k >= 0) arr.splice(k, 1)
+  else arr.push(String(id))
+}
+function cardAll(ctype, on) {
+  const items = (store.parse.result && store.parse.result.cards[ctype]) || []
+  store.parse.selCards[ctype] = on ? items.map((c) => String(c.id)) : []
+}
+const cardLabel = (ctype) => CARD_LABELS[ctype] || ctype
 
 const parsePct = computed(() => {
   const p = store.parse.progress
@@ -188,28 +230,80 @@ const parseStatText = computed(() => {
     <!-- 拆书解析 -->
     <div v-else class="dbody">
       <p class="dim">
-        选一本小说 txt，自动按「第N章 / Chapter N / 第N回」切分章节存入 chapters/，
+        选一本小说 txt，自动按「第N章 / Chapter N / 第N回」切分章节，
         并调用大模型从中提取 人物 / 剧情 / 文风 / 伏笔 / 世界观 五类素材卡。
-        整本较长时后台逐章处理，可随时终止。
+        整本较长时后台逐章处理，解析完先预览勾选，再写入项目。
       </p>
-      <input type="file" accept=".txt" @change="onBookFile" />
+      <input type="file" accept=".txt" @change="onBookFile" :disabled="bookRunning" />
       <div v-if="bookName" class="mdres">已选择：{{ bookName }}（{{ bookText.length }} 字）</div>
-      <label class="mdopt"><input type="checkbox" v-model="bookMerge" /> 与已有卡片合并</label>
+      <label class="mdopt"><input type="checkbox" v-model="bookMerge" :disabled="bookRunning" /> 与已有卡片合并</label>
       <div class="mdbtns">
         <button class="primary" :disabled="bookRunning" @click="runParse">开始拆书</button>
         <button v-if="bookRunning" @click="stopParseBook">终止</button>
       </div>
 
-      <div v-if="store.parse.status !== 'idle'" class="parsebox">
+      <!-- 解析中：进度 + 日志 -->
+      <div v-if="bookRunning" class="parsebox">
         <div class="pbar"><div class="pfill" :style="{ width: parsePct + '%' }"></div></div>
         <div class="pstat">
           状态：{{ store.parse.status }} · 进度 {{ store.parse.progress.done }}/{{ store.parse.progress.total }}（{{ parsePct }}%）
         </div>
         <div v-if="store.parse.error" class="perr">{{ store.parse.error }}</div>
-        <div v-if="parseStatText" class="mdres">{{ parseStatText }}</div>
         <div class="plogs">
           <div v-for="(l, i) in store.parse.logs" :key="i" class="plog">{{ l }}</div>
         </div>
+      </div>
+
+      <!-- 解析完成：预览 + 勾选 -->
+      <div v-else-if="store.parse.status === 'done' && store.parse.result" class="parsebox">
+        <div class="pstat">解析完成，预览并勾选要写入的内容：</div>
+        <div class="ptools">
+          <label class="mdopt"><input type="checkbox" v-model="bookClear" /> 导入前清空已有章节</label>
+          <button class="primary" :disabled="store.parse.committing" @click="commitParse">
+            {{ store.parse.committing ? '写入中…' : '写入选中' }}
+          </button>
+        </div>
+
+        <div class="psec">
+          <div class="psech">
+            章节（{{ store.parse.selChapters.length }}/{{ store.parse.result.chapters.length }}）
+            <span class="plink">
+              <button class="link" @click="chAll(true)">全选</button> /
+              <button class="link" @click="chAll(false)">全不选</button>
+            </span>
+          </div>
+          <label v-for="(c, i) in store.parse.result.chapters" :key="i" class="pitem">
+            <input type="checkbox" :checked="isChSel(i)" @change="toggleCh(i)" />
+            <span>{{ c.title }} <em class="dim">（{{ c.chars }} 字）</em></span>
+          </label>
+        </div>
+
+        <div v-for="[ctype, items] in Object.entries(store.parse.result.cards)" :key="ctype" class="psec">
+          <div class="psech">
+            {{ cardLabel(ctype) }}（{{ (store.parse.selCards[ctype] || []).length }}/{{ items.length }}）
+            <span class="plink">
+              <button class="link" @click="cardAll(ctype, true)">全选</button> /
+              <button class="link" @click="cardAll(ctype, false)">全不选</button>
+            </span>
+          </div>
+          <label v-for="it in items" :key="it.id" class="pitem">
+            <input type="checkbox" :checked="isCardSel(ctype, it.id)" @change="toggleCard(ctype, it.id)" />
+            <span>{{ cardName(it) }} <em class="dim">（{{ it.id }}）</em></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 已写入：结果统计 -->
+      <div v-else-if="store.parse.status === 'committed'" class="parsebox">
+        <div class="pstat">已写入项目：</div>
+        <div v-if="parseStatText" class="mdres">{{ parseStatText }}</div>
+        <div v-if="store.parse.error" class="perr">{{ store.parse.error }}</div>
+      </div>
+
+      <!-- 出错 / 终止 -->
+      <div v-else-if="store.parse.status !== 'idle'" class="parsebox">
+        <div class="pstat">状态：{{ store.parse.status }}</div>
+        <div v-if="store.parse.error" class="perr">{{ store.parse.error }}</div>
       </div>
     </div>
   </aside>

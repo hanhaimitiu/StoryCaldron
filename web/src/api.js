@@ -49,10 +49,15 @@ export const api = {
   listChapters: (project) => request(`/api/chapters${qs({ project })}`),
   readChapter: (project, file) => request(`/api/chapter${qs({ project, file })}`),
 
-  // 拆书解析：上传整本 txt，后台线程跑，前端轮询进度
+  // 拆书解析：上传整本 txt，后台线程跑，前端轮询预览方案
   parseBook: (project, name, text, merge) =>
     request('/api/parse-book', { method: 'POST', body: { project, name, text, merge } }),
   parseBookStatus: (task) => request(`/api/parse-book/status${qs({ task })}`),
+  parseBookCommit: (task, project, opts) =>
+    request('/api/parse-book/commit', {
+      method: 'POST',
+      body: { task, project, merge: opts.merge, clear_chapters: opts.clearChapters, chapters: opts.chapters, cards: opts.cards },
+    }),
   parseBookStop: (task) => request('/api/parse-book/stop', { method: 'POST', body: { task } }),
 
   writeStart: (payload) => request('/api/write/start', { method: 'POST', body: payload }),

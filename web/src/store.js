@@ -47,14 +47,18 @@ export const store = reactive({
   cardFields: {},
   chapters: [],
 
-  // 拆书解析（后台任务 + 进度轮询）
+  // 拆书解析（后台任务 + 进度轮询 + 预览勾选）
   parse: {
     task: '',
-    status: 'idle', // idle | pending | running | done | error | stopped | not_found
+    status: 'idle', // idle | pending | running | done | committed | error | stopped | not_found
     progress: { done: 0, total: 0 },
     logs: [],
     stats: {},
     error: '',
+    result: null, // 预览方案 {chapter_count, chapters:[{title,chars}], cards:{ctype:[card]}}
+    selChapters: [], // 勾选写入的章节下标
+    selCards: {}, // 勾选写入的卡片 {ctype:[id]}
+    committing: false,
   },
 
   // 界面
@@ -203,6 +207,7 @@ function applyParse(s) {
   p.logs = s.logs || []
   p.stats = s.stats || {}
   p.error = s.error || ''
+  if (s.result) p.result = s.result
 }
 
 function startParsePoll() {
@@ -220,27 +225,15 @@ function stopParsePoll() {
   }
 }
 
-async function pollParse() {
-  if (!store.parse.task) return
-  const s = await api.parseBookStatus(store.parse.task)
-  applyParse(s)
-  if (s.status === 'done') {
-    stopParsePoll()
-    toast('拆书完成：' + parseSummary(s.stats))
-    await guard(loadCards)
-    await guard(loadChapters)
-  } else if (s.status === 'error') {
-    stopParsePoll()
-    toast('拆书出错：' + (s.error || '未知'), true)
-  } else if (s.status === 'stopped') {
-    stopParsePoll()
-    toast('已终止拆书')
-    await guard(loadCards)
-    await guard(loadChapters)
-  } else if (s.status === 'not_found') {
-    stopParsePoll()
-    toast('任务不存在', true)
+function initParseSel(result) {
+  // 默认全选：所有章节 + 所有卡片
+  const p = store.parse
+  p.selChapters = (result.chapters || []).map((_, i) => i)
+  const sel = {}
+  for (const [ctype, items] of Object.entries(result.cards || {})) {
+    sel[ctype] = (items || []).map((c) => String(c.id))
   }
+  p.selCards = sel
 }
 
 function parseSummary(stats) {
@@ -249,6 +242,27 @@ function parseSummary(stats) {
     .filter((k) => k in (stats || {}))
     .map((k) => `${map[k]} ${stats[k]}`)
     .join('，')
+}
+
+async function pollParse() {
+  if (!store.parse.task) return
+  const s = await api.parseBookStatus(store.parse.task)
+  applyParse(s)
+  if (s.status === 'done') {
+    // 解析完成、尚未写入：展示预览供勾选，不自动刷新卡片
+    stopParsePoll()
+    initParseSel(s.result || { chapters: [], cards: {} })
+    toast('解析完成，请预览勾选后写入')
+  } else if (s.status === 'error') {
+    stopParsePoll()
+    toast('拆书出错：' + (s.error || '未知'), true)
+  } else if (s.status === 'stopped') {
+    stopParsePoll()
+    toast('已终止拆书')
+  } else if (s.status === 'not_found') {
+    stopParsePoll()
+    toast('任务不存在', true)
+  }
 }
 
 export async function startParseBook(text, name, merge = true) {
@@ -262,11 +276,35 @@ export async function startParseBook(text, name, merge = true) {
       return
     }
     stopParsePoll()
-    store.parse = { task: '', status: 'pending', progress: { done: 0, total: 0 }, logs: [], stats: {}, error: '' }
+    store.parse = {
+      task: '', status: 'pending', progress: { done: 0, total: 0 },
+      logs: [], stats: {}, error: '', result: null, selChapters: [], selCards: {}, committing: false,
+    }
     const r = await api.parseBook(store.project, name, text, merge)
     store.parse.task = r.task_id
     store.parse.status = 'running'
     startParsePoll()
+  })
+}
+
+export async function commitParseBook(merge, clearChapters) {
+  return guard(async () => {
+    if (!store.parse.task) {
+      toast('没有可写入的解析结果', true)
+      return
+    }
+    store.parse.committing = true
+    const r = await api.parseBookCommit(store.parse.task, store.project, {
+      merge, clearChapters,
+      chapters: store.parse.selChapters,
+      cards: store.parse.selCards,
+    })
+    store.parse.status = 'committed'
+    store.parse.stats = r.stats || {}
+    store.parse.committing = false
+    toast('已写入：' + parseSummary(r.stats))
+    await guard(loadCards)
+    await guard(loadChapters)
   })
 }
 

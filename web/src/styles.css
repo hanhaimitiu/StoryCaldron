@@ -365,7 +365,7 @@ textarea { resize: vertical; }
 .mdres { margin-top: 10px; font-size: 13px; color: var(--ok); }
 .mdopt { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); margin: 8px 0; }
 
-/* 拆书解析：进度条 + 日志 */
+/* 拆书解析：进度条 + 日志 + 预览勾选 */
 .parsebox { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
 .pbar { height: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .pfill { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
@@ -373,6 +373,13 @@ textarea { resize: vertical; }
 .perr { font-size: 12px; color: var(--err); margin: 6px 0; }
 .plogs { max-height: 220px; overflow: auto; background: var(--panel); border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; }
 .plog { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+
+.ptools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 10px; }
+.psec { background: var(--panel); border: 1px solid var(--border-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.psech { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+.plink { font-weight: 400; }
+.pitem { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 3px 0; cursor: pointer; }
+.pitem em { font-style: normal; color: var(--dim); }
 
 .chitem {
   display: flex; align-items: center; gap: 10px;
