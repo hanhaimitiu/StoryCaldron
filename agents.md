@@ -10,7 +10,7 @@
 当前状态：**能跑、但偏"单人快糙"**。已知短板：
 
 - ❌ 无自动化测试、无 CI；验证靠 `py_compile` + 临时脚本手测。
-- ❌ 核心文件过长（见第 5 节），违反单文件行数红线。
+- ❌ 核心文件过长：后端 `collab_novel_agent.py` 与 `web_server.py` 已完成拆分；现剩 `web/src/store.js`（515 行）、`backend/md_to_cards.py`（488 行）待评估拆分。
 - ✅ 已建立：中文注释规范、按"小功能点"提交纪律、长期记忆能力（#1/#2/#4/#8）、删除项目安全边界。
 
 **行数红线（强约束）：**
@@ -26,8 +26,12 @@
 ```
 StoryCaldron/
 ├── backend/
-│   ├── web_server.py          # HTTP 服务 + 路由分发 + 会话注册表/驱动（842 行，需拆）
-│   ├── collab_novel_agent.py  # LangGraph 编排 + 12 节点 + prompt（1291 行，需拆）
+│   ├── web_server.py          # HTTP 服务 + 路由分发（主文件 226 行，已由 api_*.py 等拆分）
+│   ├── collab_novel_agent.py  # 编排入口：图编译 + 对外 API（约 330 行）
+│   ├── state.py               # 状态/类型/常量/埋点（拆分自 collab_novel_agent.py）
+│   ├── llm.py                 # LLM 调用 + 素材卡 IO（拆分自 collab_novel_agent.py）
+│   ├── prompts.py             # 各节点提示词模板（拆分自 collab_novel_agent.py）
+│   ├── nodes.py               # 12 节点函数 + 4 路由（拆分自 collab_novel_agent.py）
 │   ├── project.py             # 项目模型：meta/卡片/canon/outline（352 行，OK）
 │   ├── md_to_cards.py         # markdown -> 素材卡 解析（488 行，偏长）
 │   ├── book_to_cards.py       # 整书拆书（329 行）
@@ -78,13 +82,14 @@ StoryCaldron/
 
 当前违规文件及拆分指引（拆分时务必保持 import 关系与对外函数签名不变，并跑回归自测）：
 
-### 5.1 `backend/collab_novel_agent.py`（1291 行，最优先）
-LangGraph 图 + 12 个节点函数 + 各节点 prompt 全堆在一处。
-- 抽出**状态/类型定义**到 `state.py`（当前用 `TypedDict`/注解集中处）。
-- 抽出**各节点 prompt 模板**到 `prompts.py`（或 `nodes/prompts/`），节点函数只留"取状态→调 LLM→写回"的逻辑。
-- 主文件保留：图编译（`StateGraph`）、`start_session` / `commit` 入口、节点间流转。
-- 目标：主文件 < 500 行，prompt 与节点逻辑各成模块。
-
+### 5.1 `backend/collab_novel_agent.py`（1291 → 拆分完成 ✅）
+LangGraph 图 + 12 个节点函数 + 各节点 prompt 原全堆在一处，已按以下方式拆分（目标：主文件 < 500 行，prompt 与节点逻辑各成模块）：
+- `state.py`：状态结构（`CollabNovelState` / `StepLog`）、共享常量（`ROLE_TEMPERATURES` / `LLM_*` / `STYLE_REVISE_MAX` / `DATA_DIR` / `OUTPUT_DIR` / `CHECKPOINT_FILE`）、步骤埋点装饰器 `track_step`。
+- `llm.py`：`get_llm` / `_call_llm`（大模型访问）与 `load_card_file` / `save_card_file` / `format_cards`（素材卡 IO）。
+- `prompts.py`：各节点的提示词模板，抽成 `build_*_prompt(state)` 函数，节点只留"取状态→调 LLM→写回"。
+- `nodes.py`：12 个节点函数 + 4 个路由（`approve_card_router` / `continuity_router` / `human_review_router` / `approve_canon_router`）。
+- 主文件 `collab_novel_agent.py`：仅保留图编译（`StateGraph`）、`FileCheckpointer`（检查点落盘）、`start_session` / `run_session` / `submit_human_action` / `run_with_manual_review` 对外 API 与 `__main__` 测试入口。
+- 对外符号不变：`start_session` 等仍从 `collab_novel_agent` 顶层导出；`md_to_cards.py` 用的 `_call_llm` 也通过主文件再导出保持可用。
 ### 5.2 `backend/web_server.py`（842 → 226 行）✅ 已完成
 HTTP 路由 + `SESSIONS` 注册表/持久化/恢复 + LangGraph 驱动线程全混。拆分结果：
 - `common.py`：共享路径常量（HERE/ROOT/WEB_DIR/DIST_DIR/PROJECTS_ROOT/DEFAULT_PORT）、`resolve_project_arg`、`config_of`。
@@ -122,7 +127,7 @@ HTTP 路由 + `SESSIONS` 注册表/持久化/恢复 + LangGraph 驱动线程全�
 - **切换项目不得丢会话**：`store.js` 用 `projectSessions` 注册表按项目缓存 `sid`；`selectProject` 切走时保句柄、切回按 `sid` 续轮询。严禁在切换项目时无条件 `resetSession` 清空其他项目句柄。
 - **删除项目安全边界**：只允许删 `projects/` 下的子目录，先 `os.path.realpath` 再校验前缀 `projects/<name>/`，拦截 `../` 越界；删除同时从 `SESSIONS` 移除该项目在跑会话句柄。
 - **落盘契约**：`commit` 定稿后追加 `canon.md`（#4）与 `outline.md`（#2）；演示模式落盘到 `OUTPUT_DIR/`。
-- **检查点现状**：`MemorySaver` 仍是**内存级** checkpointer，**服务重启即丢图状态**；`sessions.json` 仅存会话元数据。要做到"重启续写"需换持久化 checkpointer（如 `SqliteSaver`）——列为待办，**改此处前先与用户确认**，避免破坏现有内存态行为。
+- **检查点现状**：编排用的 checkpointer 是**落盘版** `FileCheckpointer`（继承 `InMemorySaver`，每次 `put/put_writes` 后把 `storage/writes/blobs` 整体 `pickle` 到 `backend/checkpoints.pkl`，见 `state.py` 的 `CHECKPOINT_FILE` 定义与 `collab_novel_agent.py` 的 `FileCheckpointer`）。配合 `sessions.json`（会话元数据注册表），**服务重启后能按 `sid`（=thread_id）恢复图状态、崩溃可续跑**——"重启续写"已经实现，不是待办。改这里前先确认，避免破坏现有持久化行为。
 
 ---
 
