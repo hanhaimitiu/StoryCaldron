@@ -305,12 +305,18 @@ def load_context_node(state: CollabNovelState) -> CollabNovelState:
     """加载外部素材卡到状态，供下游 Agent 使用。"""
     print("\n--- 📚 加载素材上下文 ---")
 
-    # 若调用方已经注入卡片，则不再重复读取
-    characters = state.get("character_cards") or load_card_file("characters.json")
-    plots = state.get("plot_cards") or load_card_file("stories.json") or load_card_file("plots.json")
-    styles = state.get("style_cards") or load_card_file("styles.json")
-    foreshadowing = state.get("foreshadowing_cards") or load_card_file("foreshadowing.json")
-    worldviews = state.get("worldview_cards") or load_card_file("wordviews.json")
+    # 回退读取必须限定在本项目 cards_dir（演示模式为 DATA_DIR）；
+    # 绝不能落到默认 DATA_DIR，否则空项目/删光某类卡时会错误混入全局演示卡，破坏项目隔离。
+    cards_dir = state.get("cards_dir") or DATA_DIR
+
+    # 优先用 start_session 已注入的卡片；为空也保持空（不要回落到全局演示卡）
+    characters = state.get("character_cards") or load_card_file("characters.json", base_dir=cards_dir)
+    plots = (state.get("plot_cards")
+             or load_card_file("stories.json", base_dir=cards_dir)
+             or load_card_file("plots.json", base_dir=cards_dir))
+    styles = state.get("style_cards") or load_card_file("styles.json", base_dir=cards_dir)
+    foreshadowing = state.get("foreshadowing_cards") or load_card_file("foreshadowing.json", base_dir=cards_dir)
+    worldviews = state.get("worldview_cards") or load_card_file("wordviews.json", base_dir=cards_dir)
 
     print(f"   人物卡 {len(characters)} 条，剧情卡 {len(plots)} 条，文风卡 {len(styles)} 条，"
           f"伏笔卡 {len(foreshadowing)} 条，世界观卡 {len(worldviews)} 条")
