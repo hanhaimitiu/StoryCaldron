@@ -69,6 +69,9 @@ DEFAULT_LLM_API_KEY = "dummy"
 # 加 Connection: close 让每次请求都新建连接即可规避。接正常服务可置 False。
 LLM_FORCE_CONNECTION_CLOSE = True
 LLM_MAX_RETRIES = 3
+# 润色回环硬上限：人工反复「修改」超过此次数后，强制通过进入收尾，
+# 避免 style_edit ↔ human_review 空转（上下文规模恒定，但仍需给人工一个出口）。
+STYLE_REVISE_MAX = 5
 
 
 def get_llm(temperature: float = 0.6) -> ChatOpenAI:
@@ -652,6 +655,11 @@ def human_review_node(state: CollabNovelState) -> CollabNovelState:
 
 def human_review_router(state: CollabNovelState) -> str:
     action = state.get("human_action", "")
+    # 润色回环硬上限：人工反复「修改」超过 STYLE_REVISE_MAX 次，强制通过进入收尾，
+    # 避免 style_edit ↔ human_review 无限空转。
+    if state.get("style_revise_count", 0) >= STYLE_REVISE_MAX:
+        print(f"⚠️ 人工润色修改已达上限（{STYLE_REVISE_MAX} 次），强制通过进入收尾。")
+        return "approved"
     if action == "revise":
         return "revise"
     return "approved"
