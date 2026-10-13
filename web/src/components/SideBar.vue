@@ -1,5 +1,5 @@
 <script setup>
-import { store, selectProject, createProject, setTheme, THEMES } from '../store'
+import { store, selectProject, createProject, deleteProject, setTheme, THEMES } from '../store'
 
 const AGENT_COUNT = 12
 
@@ -16,6 +16,12 @@ async function onCreate() {
   if (!name) return
   const demo = window.confirm('是否写入一套演示素材卡，方便马上试跑？')
   await createProject(name, demo)
+}
+
+function onDelete(p) {
+  if (window.confirm(`确定删除项目「${p.name}」？\n该操作会移除其全部章节与素材卡（含 canon.md / outline.md），不可恢复。`)) {
+    deleteProject(p.path)
+  }
 }
 </script>
 
@@ -37,13 +43,16 @@ async function onCreate() {
         :class="{ active: p.path === store.project }"
         @click="selectProject(p.path)"
       >
-        <span
-          v-if="store.projectStatus[p.path]"
-          class="sdot"
-          :class="store.projectStatus[p.path]"
-          :title="statusText(store.projectStatus[p.path])"
-        ></span>
-        <span class="pname">{{ p.name }}</span>
+        <div class="row">
+          <span
+            v-if="store.projectStatus[p.path]"
+            class="sdot"
+            :class="store.projectStatus[p.path]"
+            :title="statusText(store.projectStatus[p.path])"
+          ></span>
+          <span class="pname">{{ p.name }}</span>
+          <button class="del" title="删除项目" @click.stop="onDelete(p)">×</button>
+        </div>
         <span class="pmeta">{{ p.chapters }} 章 · {{ p.cards }} 卡</span>
       </li>
       <li v-if="!store.projects.length" class="empty">还没有项目</li>
@@ -80,6 +89,10 @@ async function onCreate() {
   margin-right: 8px;
   background: #aaa;
 }
+.row {
+  display: flex;
+  align-items: center;
+}
 .sdot.running {
   background: #3b82f6;
   box-shadow: 0 0 6px #3b82f6;
@@ -96,5 +109,26 @@ async function onCreate() {
 }
 .sdot.stopped {
   background: #9ca3af;
+}
+.del {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.projects li:hover .del {
+  opacity: 1;
+}
+.del:hover {
+  background: #ef4444;
+  color: #fff;
 }
 </style>

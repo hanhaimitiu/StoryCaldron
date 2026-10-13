@@ -35,6 +35,7 @@ export const api = {
 
   listProjects: () => request('/api/projects'),
   createProject: (path, demo) => request('/api/projects', { method: 'POST', body: { path, demo } }),
+  deleteProject: (project) => request('/api/projects/delete', { method: 'POST', body: { project } }),
 
   listCards: (project) => request(`/api/cards${qs({ project })}`),
   saveCard: (project, type, card) =>

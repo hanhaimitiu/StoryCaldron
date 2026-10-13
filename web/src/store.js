@@ -225,6 +225,17 @@ export async function createProject(name, demo) {
   })
 }
 
+export async function deleteProject(path) {
+  return guard(async () => {
+    await api.deleteProject(path)
+    // 删的是当前项目：清掉会话视图（句柄已在后端移除）
+    if (store.project === path) resetSession()
+    delete store.projectStatus[path]
+    await loadProjects()
+    toast('项目已删除')
+  })
+}
+
 /* ------------------------------ 素材卡 ------------------------------ */
 export async function loadCards() {
   return guard(async () => {

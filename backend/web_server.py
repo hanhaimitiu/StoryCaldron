@@ -26,6 +26,7 @@ StoryCaldron 网页服务 —— 给多 Agent 小说创作套一层浏览器界�
 """
 import json
 import os
+import shutil
 import sys
 import time
 import tempfile
@@ -328,6 +329,32 @@ def api_create_project(body):
     root = resolve_project_arg(body.get("path") or body.get("name"))
     proj.ensure_project(root, seed_demo=bool(body.get("demo")))
     return {"path": root, "name": os.path.basename(root)}
+
+
+def api_delete_project(body):
+    """删除一个项目目录（含章节/素材卡/大纲/正典等全部文件）。
+
+    安全边界：只允许删除 PROJECTS_ROOT 下的子目录，禁止越界删除系统文件。
+    若该项目有正在跑的创作会话，先从注册表移除其句柄，避免后续轮询/写入报错。
+    """
+    raw = body.get("project") or body.get("path") or body.get("name")
+    if not raw:
+        raise KeyError("缺少 project 参数")
+    root = resolve_project_arg(raw)
+    # 规范化为真实路径，校验仍在 projects/ 内（防 ../ 越界）
+    real_root = os.path.realpath(root)
+    real_base = os.path.realpath(PROJECTS_ROOT)
+    if real_root == real_base or not real_root.startswith(real_base + os.sep):
+        raise KeyError(f"只能删除 projects 下的项目：{root}")
+    if not os.path.isdir(real_root):
+        return {"deleted": False, "name": os.path.basename(root), "reason": "不存在"}
+    name = os.path.basename(real_root)
+    # 清掉该项目在跑的会话句柄（守护线程会自行结束），防止轮询/写入落到已删目录
+    with SESSIONS_LOCK:
+        for sid in [s for s, m in SESSIONS.items() if m.get("project") == root]:
+            SESSIONS.pop(sid, None)
+    shutil.rmtree(real_root)
+    return {"deleted": True, "name": name}
 
 
 def api_list_cards(query):
@@ -765,6 +792,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/projects":
                 return self._json(200, api_create_project(body))
+            if path == "/api/projects/delete":
+                return self._json(200, api_delete_project(body))
             if path == "/api/cards":
                 return self._json(200, api_save_card(body))
             if path == "/api/cards/delete":
