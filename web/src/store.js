@@ -9,6 +9,11 @@ import { api } from './api'
 
 const POLL_MS = 2000
 const THEME_KEY = 'sc-theme'
+const SID_KEY = 'sc-sid'      // 当前创作会话 id：跨页签/刷新恢复用
+const PROJECT_KEY = 'sc-project' // 当前项目路径：恢复时对齐素材卡/章节
+
+/** 项目路径 -> 该项目的创作会话 sid。切项目时不丢弃句柄，切回来按 sid 续上。 */
+const projectSessions = {}
 
 /** 五套皮肤（前两套浅色）；swatch 是切换器里那个小色点的颜色 */
 export const THEMES = [
@@ -41,6 +46,8 @@ export const store = reactive({
     error: '',
   },
   writing: false,
+  // 各项目创作会话的最新状态（侧栏标记用）：{ [projectPath]: status }
+  projectStatus: {},
 
   // 素材卡 / 章节
   cardTypes: [],
@@ -85,6 +92,34 @@ async function guard(fn) {
   }
 }
 
+/** 把当前会话 id 与项目路径写入 localStorage，供新页签/刷新后静默恢复 */
+function saveSessionMeta() {
+  try {
+    localStorage.setItem(SID_KEY, store.session.sid)
+    localStorage.setItem(PROJECT_KEY, store.project)
+  } catch {
+    /* 隐私模式写不了，忽略 */
+  }
+}
+
+/** 清除持久化的会话 id（切换项目 / 开新创作时调用，避免恢复出错误会话） */
+function clearSessionMeta() {
+  try {
+    localStorage.removeItem(SID_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 把某 sid 挂为当前项目活动会话：写入 store.session、登记到 projectSessions、落盘、记状态 */
+function attachSession(sid, s) {
+  store.session.sid = sid
+  projectSessions[store.project] = sid
+  applyStatus(s)
+  store.projectStatus[store.project] = s.status
+  saveSessionMeta()
+}
+
 /** 把后端状态写进 store.session */
 function applyStatus(s) {
   const ses = store.session
@@ -118,6 +153,7 @@ async function poll() {
   const s = await api.writeStatus(store.session.sid)
   applyStatus(s)
   store.writing = s.status === 'running'
+  store.projectStatus[store.project] = s.status
   if (s.status === 'done') {
     stopPoll()
     toast('本章已完成')
@@ -147,9 +183,36 @@ export async function loadProjects() {
 }
 
 export async function selectProject(path) {
+  if (!path) return
+  // 同项目：仅确保素材卡/章节已加载，不动会话
+  if (path === store.project) {
+    await Promise.all([loadCards(), loadChapters()])
+    return
+  }
+  // 先把当前项目正在跑的会话句柄按项目存好，切回来还能续上（后端线程不会停）
+  if (store.project && store.session.sid) projectSessions[store.project] = store.session.sid
   store.project = path
-  resetSession()
+  try {
+    localStorage.setItem(PROJECT_KEY, path)
+  } catch {
+    /* ignore */
+  }
+  stopPoll()
   await Promise.all([loadCards(), loadChapters()])
+  // 目标项目若已有会话（在跑/等待/已完成），恢复其视图并续轮询
+  const prevSid = projectSessions[path]
+  if (prevSid) {
+    const s = await api.writeStatus(prevSid).catch(() => null)
+    if (s) {
+      attachSession(prevSid, s)
+      store.writing = s.status === 'running'
+      startPoll()
+      return
+    }
+    // 后端已无此会话（如清过 sessions.json），放弃句柄
+    delete projectSessions[path]
+  }
+  resetSession()
 }
 
 export async function createProject(name, demo) {
@@ -335,6 +398,7 @@ export async function readChapter(file) {
 /* ------------------------------ 写作 ------------------------------ */
 export function resetSession() {
   stopPoll()
+  clearSessionMeta()
   store.session = {
     sid: '', status: 'idle', round: 0, stage: '', plan: '',
     draft: '', logs: [], chapterFile: '', error: '',
@@ -347,11 +411,43 @@ export async function startWrite(payload) {
     resetSession()
     const r = await api.writeStart({ project: store.project, ...payload })
     store.session.sid = r.sid
+    saveSessionMeta()
+    projectSessions[store.project] = r.sid
     store.session.status = 'running'
     store.writing = true
     toast('已开始，流程会在人工审核处等你')
     startPoll()
   })
+}
+
+/**
+ * 跨页签/刷新恢复：从 localStorage 读回上次会话 sid，对齐项目后直接拉状态。
+ * 后端 SESSIONS 注册表 + 进程内 MemorySaver 仍持有完整状态，因此可无缝续上。
+ * 若会话在后端已不存在（如手动清过 sessions.json），则清除本地记录，不报错。
+ */
+export async function resumeSession() {
+  let sid = ''
+  let proj = ''
+  try {
+    sid = localStorage.getItem(SID_KEY) || ''
+    proj = localStorage.getItem(PROJECT_KEY) || ''
+  } catch {
+    return
+  }
+  if (!sid) return
+  if (proj && store.projects.some((p) => p.path === proj)) store.project = proj
+  if (!store.project) return
+  // 先探一次，确认后端还有这个会话（避免恢复出已失效的会话）
+  const s = await api.writeStatus(sid).catch(() => null)
+  if (!s) {
+    clearSessionMeta()
+    return
+  }
+  store.session.sid = sid
+  projectSessions[store.project] = sid
+  applyStatus(s)
+  store.writing = s.status === 'running'
+  startPoll()
 }
 
 export async function sendAction(action, extra = {}) {

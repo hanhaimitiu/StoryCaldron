@@ -3,6 +3,14 @@ import { store, selectProject, createProject, setTheme, THEMES } from '../store'
 
 const AGENT_COUNT = 12
 
+const STATUS_LABEL = {
+  idle: '待命', running: '创作中', waiting: '等你审核',
+  done: '已完成', error: '出错', stopped: '已终止',
+}
+function statusText(s) {
+  return STATUS_LABEL[s] || s
+}
+
 async function onCreate() {
   const name = window.prompt('新项目名称（会建在 projects/ 下）：', 'mybook')
   if (!name) return
@@ -29,6 +37,12 @@ async function onCreate() {
         :class="{ active: p.path === store.project }"
         @click="selectProject(p.path)"
       >
+        <span
+          v-if="store.projectStatus[p.path]"
+          class="sdot"
+          :class="store.projectStatus[p.path]"
+          :title="statusText(store.projectStatus[p.path])"
+        ></span>
         <span class="pname">{{ p.name }}</span>
         <span class="pmeta">{{ p.chapters }} 章 · {{ p.cards }} 卡</span>
       </li>
@@ -56,3 +70,31 @@ async function onCreate() {
     </div>
   </aside>
 </template>
+
+<style scoped>
+.sdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  margin-right: 8px;
+  background: #aaa;
+}
+.sdot.running {
+  background: #3b82f6;
+  box-shadow: 0 0 6px #3b82f6;
+}
+.sdot.waiting {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+.sdot.done {
+  background: #22c55e;
+}
+.sdot.error {
+  background: #ef4444;
+}
+.sdot.stopped {
+  background: #9ca3af;
+}
+</style>

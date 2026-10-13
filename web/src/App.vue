@@ -1,13 +1,16 @@
 <script setup>
 import { computed, onMounted } from 'vue'
-import { store, loadProjects, openDrawer } from './store'
+import { store, loadProjects, resumeSession, openDrawer } from './store'
 import SideBar from './components/SideBar.vue'
 import AgentStream from './components/AgentStream.vue'
 import Composer from './components/Composer.vue'
 import CardsDrawer from './components/CardsDrawer.vue'
 import ChaptersDrawer from './components/ChaptersDrawer.vue'
 
-onMounted(loadProjects)
+onMounted(async () => {
+  await loadProjects()
+  await resumeSession()
+})
 
 const STATUS_TEXT = {
   idle: '待命', running: '创作中', waiting: '等你审核',
