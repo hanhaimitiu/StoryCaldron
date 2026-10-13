@@ -30,6 +30,7 @@ import sys
 import tempfile
 import threading
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -45,6 +46,7 @@ import project as proj                     # noqa: E402
 import collab_novel_agent as agent         # noqa: E402
 from collab_novel_agent import start_session  # noqa: E402
 from md_to_cards import convert_to_project     # noqa: E402
+import book_to_cards as bookmod               # noqa: E402  # 拆书解析（txt -> 章节 + 卡片）
 
 
 DEFAULT_PORT = 8765
@@ -65,6 +67,10 @@ MAX_DRIVE_LOOPS = 8
 # 会话运行时状态：sid -> 运行时记录
 SESSIONS = {}
 SESSIONS_LOCK = threading.Lock()
+
+# 拆书解析任务：task_id -> 运行时记录（与写作流同源的线程 + 轮询模式）
+BOOK_TASKS = {}
+BOOK_TASKS_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -395,8 +401,99 @@ def api_write_stop(body):
 
 
 # ---------------------------------------------------------------------------
-# HTTP 处理
+# 拆书解析（txt -> 章节 + 五类卡片）：后台线程驱动，前端轮询进度
 # ---------------------------------------------------------------------------
+def _book_progress(task_id, done, total, msg):
+    """progress_cb：把进度写进任务记录，供前端轮询。"""
+    with BOOK_TASKS_LOCK:
+        rec = BOOK_TASKS.get(task_id)
+        if not rec:
+            return
+        rec["progress"] = {"done": done, "total": total}
+        if msg:
+            rec["logs"].append(msg)
+            if len(rec["logs"]) > 200:   # 防止日志无限增长
+                rec["logs"] = rec["logs"][-200:]
+
+
+def _run_book_task(task_id, project_dir, txt, merge):
+    """后台线程：真正跑拆书，结束写 status=done/error/stopped。"""
+    try:
+        with BOOK_TASKS_LOCK:
+            rec = BOOK_TASKS.get(task_id)
+            if rec:
+                rec["status"] = "running"
+        stats = bookmod.parse_book(
+            txt, project_dir, merge=merge,
+            progress_cb=lambda d, t, m: _book_progress(task_id, d, t, m),
+            stop_check=lambda: BOOK_TASKS.get(task_id, {}).get("stop"),
+        )
+        with BOOK_TASKS_LOCK:
+            rec = BOOK_TASKS.get(task_id)
+            if rec:
+                rec["status"] = "stopped" if rec.get("stop") else "done"
+                rec["stats"] = stats
+                rec["progress"] = {"done": rec["progress"]["total"], "total": rec["progress"]["total"]}
+    except Exception as e:
+        with BOOK_TASKS_LOCK:
+            rec = BOOK_TASKS.get(task_id)
+            if rec:
+                rec["status"] = "error"
+                rec["error"] = f"{type(e).__name__}: {e}"
+
+
+def api_parse_book(body):
+    """启动一次拆书解析，返回 task_id。body: {project, name, text, merge}。"""
+    root = resolve_project_arg(body.get("project"))
+    txt = body.get("text") or ""
+    if not txt.strip():
+        raise ValueError("txt 内容为空")
+    merge = bool(body.get("merge", True))
+    task_id = f"book_{uuid.uuid4().hex[:12]}"
+    with BOOK_TASKS_LOCK:
+        BOOK_TASKS[task_id] = {
+            "status": "pending",
+            "progress": {"done": 0, "total": 0},
+            "logs": [],
+            "stats": {},
+            "error": "",
+            "stop": False,
+            "project": root,
+        }
+    t = threading.Thread(target=_run_book_task, args=(task_id, root, txt, merge), daemon=True)
+    t.start()
+    return {"task_id": task_id}
+
+
+def api_parse_book_status(query):
+    """轮询任务进度。query: {task}。"""
+    task_id = str(query.get("task", ""))
+    with BOOK_TASKS_LOCK:
+        rec = BOOK_TASKS.get(task_id)
+        if not rec:
+            return {"status": "not_found"}
+    return {
+        "status": rec["status"],
+        "progress": rec["progress"],
+        "logs": rec["logs"],
+        "stats": rec["stats"],
+        "error": rec["error"],
+    }
+
+
+def api_parse_book_stop(body):
+    """请求中止拆书任务。body: {task}。"""
+    task_id = str(body.get("task", ""))
+    with BOOK_TASKS_LOCK:
+        rec = BOOK_TASKS.get(task_id)
+        if rec:
+            rec["stop"] = True
+    return {"ok": True}
+
+
+    # ---------------------------------------------------------------------------
+    # HTTP 处理
+    # ---------------------------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
     server_version = "StoryCaldron/1.0"
 
@@ -474,6 +571,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, api_read_chapter(one))
                 if path == "/api/write/status":
                     return self._json(200, api_write_status(one))
+                if path == "/api/parse-book/status":
+                    return self._json(200, api_parse_book_status(one))
                 if path == "/api/template":
                     return self._json(200, api_template())
                 if path == "/api/health":
@@ -509,6 +608,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api_write_action(body))
             if path == "/api/write/stop":
                 return self._json(200, api_write_stop(body))
+            if path == "/api/parse-book":
+                return self._json(200, api_parse_book(body))
+            if path == "/api/parse-book/stop":
+                return self._json(200, api_parse_book_stop(body))
             return self._json(404, {"error": f"未知接口 {path}"})
         except ValueError as e:
             return self._json(400, {"error": str(e)})
