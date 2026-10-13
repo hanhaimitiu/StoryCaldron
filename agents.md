@@ -16,7 +16,7 @@
 **行数红线（强约束）：**
 
 - 单文件 **> 500 行**：必须评估拆分。
-- 单文件 **> 800 行**：必须拆分（当前已有 2 个违规文件）。
+- 单文件 **> 800 行**：必须拆分（当前仅剩 `collab_novel_agent.py` 超线；`web_server.py` 已于重构拆分为 `common.py`/`sessions.py`/`api_projects.py`/`api_write.py`/`api_parse.py`，主文件降至 226 行）。
 - 单函数 **> 80 行**：优先抽子函数。
 
 ---
@@ -85,11 +85,14 @@ LangGraph 图 + 12 个节点函数 + 各节点 prompt 全堆在一处。
 - 主文件保留：图编译（`StateGraph`）、`start_session` / `commit` 入口、节点间流转。
 - 目标：主文件 < 500 行，prompt 与节点逻辑各成模块。
 
-### 5.2 `backend/web_server.py`（842 行）
-HTTP 路由 + `SESSIONS` 注册表/持久化/恢复 + LangGraph 驱动线程全混。
-- 抽出**领域 handler**：`api_projects.py`、`api_write.py`、`api_parse.py`、`api_cards.py`、`api_outline.py`。
-- 抽出**会话管理**到 `sessions.py`：`SESSIONS` 注册表、`_ensure_session`、`_save_sessions`/`_load_sessions`、崩溃恢复续跑。
-- 主文件只留：`BaseHTTPRequestHandler` 路由分发 + `main()` 启动 + `resolve_project_arg`。
+### 5.2 `backend/web_server.py`（842 → 226 行）✅ 已完成
+HTTP 路由 + `SESSIONS` 注册表/持久化/恢复 + LangGraph 驱动线程全混。拆分结果：
+- `common.py`：共享路径常量（HERE/ROOT/WEB_DIR/DIST_DIR/PROJECTS_ROOT/DEFAULT_PORT）、`resolve_project_arg`、`config_of`。
+- `sessions.py`：`SESSIONS` 注册表、`_ensure_session`、`_save_sessions`/`_load_sessions`、崩溃恢复续跑（通过 `register_thread_starter` 注入写作驱动，避免与 api_write 循环依赖）。
+- `api_projects.py`：项目/卡片/章节/大纲/模板/删除（原计划的 `api_cards.py` 合并于此）。
+- `api_write.py`：写作驱动 `_drive`/`_start_thread` + `api_write_*` 四个接口（含 `last_chapter_path`/`_snapshot`/`ids_of`）。
+- `api_parse.py`：拆书解析 `BOOK_TASKS` + `api_parse_*` 四个接口。
+- 主文件只留：`BaseHTTPRequestHandler` 路由分发 + `main()` 启动 + 静态托管；不改任何对外 HTTP 路径与函数签名。
 
 ### 5.3 `web/src/store.js`（515 行）
 单 reactive store 处理 项目/素材卡/拆书解析/章节/写作 全部领域。
