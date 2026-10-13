@@ -161,6 +161,8 @@ def create_card(root: str, card_type: str, card: Dict[str, Any]) -> str:
     fp = os.path.join(cards_dir, fname)
     db = _read_db(fp)
     key = str(card.get("id") or uuid.uuid4().hex)
+    # 把最终生效的 id 写回卡片本身，保证读回后也能按 id 识别/删除/合并（否则卡片会缺 id 字段）
+    card["id"] = key
     db[key] = card
     _write_db(fp, db)
     return key
