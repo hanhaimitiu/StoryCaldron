@@ -47,6 +47,16 @@ export const store = reactive({
   cardFields: {},
   chapters: [],
 
+  // 拆书解析（后台任务 + 进度轮询）
+  parse: {
+    task: '',
+    status: 'idle', // idle | pending | running | done | error | stopped | not_found
+    progress: { done: 0, total: 0 },
+    logs: [],
+    stats: {},
+    error: '',
+  },
+
   // 界面
   drawer: null, // null | 'cards' | 'chapters'
   toast: { msg: '', err: false, show: false },
@@ -54,6 +64,7 @@ export const store = reactive({
 
 let toastTimer = null
 let pollTimer = null
+let parsePollTimer = null
 
 function toast(msg, err = false) {
   store.toast = { msg, err, show: true }
@@ -181,6 +192,89 @@ export async function importMd(md, useLlm, merge) {
     const r = await api.importMd(store.project, md, useLlm, merge)
     await loadCards()
     return r
+  })
+}
+
+/* ------------------------------ 拆书解析 ------------------------------ */
+function applyParse(s) {
+  const p = store.parse
+  p.status = s.status
+  p.progress = s.progress || { done: 0, total: 0 }
+  p.logs = s.logs || []
+  p.stats = s.stats || {}
+  p.error = s.error || ''
+}
+
+function startParsePoll() {
+  stopParsePoll()
+  const tick = () => guard(pollParse)
+  parsePollTimer = setInterval(tick, POLL_MS)
+  tick()
+}
+
+function stopParsePoll() {
+  // 拆书轮询用独立定时器，避免与写作轮询（pollTimer）互相清空
+  if (parsePollTimer) {
+    clearInterval(parsePollTimer)
+    parsePollTimer = null
+  }
+}
+
+async function pollParse() {
+  if (!store.parse.task) return
+  const s = await api.parseBookStatus(store.parse.task)
+  applyParse(s)
+  if (s.status === 'done') {
+    stopParsePoll()
+    toast('拆书完成：' + parseSummary(s.stats))
+    await guard(loadCards)
+    await guard(loadChapters)
+  } else if (s.status === 'error') {
+    stopParsePoll()
+    toast('拆书出错：' + (s.error || '未知'), true)
+  } else if (s.status === 'stopped') {
+    stopParsePoll()
+    toast('已终止拆书')
+    await guard(loadCards)
+    await guard(loadChapters)
+  } else if (s.status === 'not_found') {
+    stopParsePoll()
+    toast('任务不存在', true)
+  }
+}
+
+function parseSummary(stats) {
+  const map = { chapters: '章节', character: '人物卡', plot: '剧情卡', style: '文风卡', foreshadowing: '伏笔卡', worldview: '世界观卡' }
+  return Object.keys(map)
+    .filter((k) => k in (stats || {}))
+    .map((k) => `${map[k]} ${stats[k]}`)
+    .join('，')
+}
+
+export async function startParseBook(text, name, merge = true) {
+  return guard(async () => {
+    if (!store.project) {
+      toast('请先选择项目', true)
+      return
+    }
+    if (!text || !text.trim()) {
+      toast('请先选择一本小说 txt', true)
+      return
+    }
+    stopParsePoll()
+    store.parse = { task: '', status: 'pending', progress: { done: 0, total: 0 }, logs: [], stats: {}, error: '' }
+    const r = await api.parseBook(store.project, name, text, merge)
+    store.parse.task = r.task_id
+    store.parse.status = 'running'
+    startParsePoll()
+  })
+}
+
+export async function stopParseBook() {
+  return guard(async () => {
+    if (!store.parse.task) return
+    await api.parseBookStop(store.parse.task)
+    toast('已发送终止请求')
   })
 }
 

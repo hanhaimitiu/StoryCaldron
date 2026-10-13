@@ -49,6 +49,12 @@ export const api = {
   listChapters: (project) => request(`/api/chapters${qs({ project })}`),
   readChapter: (project, file) => request(`/api/chapter${qs({ project, file })}`),
 
+  // 拆书解析：上传整本 txt，后台线程跑，前端轮询进度
+  parseBook: (project, name, text, merge) =>
+    request('/api/parse-book', { method: 'POST', body: { project, name, text, merge } }),
+  parseBookStatus: (task) => request(`/api/parse-book/status${qs({ task })}`),
+  parseBookStop: (task) => request('/api/parse-book/stop', { method: 'POST', body: { task } }),
+
   writeStart: (payload) => request('/api/write/start', { method: 'POST', body: payload }),
   writeStatus: (sid) => request(`/api/write/status${qs({ sid })}`),
   writeAction: (sid, action, extra = {}) =>
