@@ -30,8 +30,9 @@ from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 import sys
-# 让同目录下的 project 模块可 import（commit 节点写章节时会用到）
+# 让同目录下的 project 模块可 import（commit 节点写章节、自动前情检索、正典落盘都会用到）
 sys.path.insert(0, os.path.dirname(__file__))
+import project as proj
 
 # ---------------------------------------------------------------------------
 # 全局配置
@@ -208,6 +209,7 @@ class CollabNovelState(TypedDict, total=False):
     chapter_title: str
     chapter_outline: str
     previous_summary: str
+    prior_chapters: str  # 跨章节检索得到的近期章节前情片段（#1）
 
     # 加载的素材卡
     character_cards: List[Dict[str, Any]]
@@ -349,6 +351,8 @@ def plan_chapter_node(state: CollabNovelState) -> CollabNovelState:
 {format_cards(state.get('foreshadowing_cards', []), '伏笔卡')}
 {format_cards(state.get('worldview_cards', []), '世界观卡')}
 
+{f"【前文片段（近期章节，用于保持连续性）】\n" + state["prior_chapters"] if state.get("prior_chapters") else ""}
+
 请输出：
 1. 本章核心目标（本章要解决什么问题、推动哪条剧情线）
 2. 出场人物及在本章的任务/状态
@@ -450,6 +454,8 @@ def write_draft_node(state: CollabNovelState) -> CollabNovelState:
 {format_cards(state.get('worldview_cards', []), '世界观卡')}
 {style_text}
 
+{f"【前文片段（近期章节，用于保持连续性）】\n" + state["prior_chapters"] if state.get("prior_chapters") else ""}
+
 ### 输出要求
 1. 直接输出完整正文，不要解释、不要开场白、不要结尾总结。
 2. 严格按【本章计划】展开，不要偏离大纲。
@@ -492,6 +498,8 @@ def check_continuity_node(state: CollabNovelState) -> CollabNovelState:
 
 【当前草稿】
 {state.get('draft', '')}
+
+{f"【前文片段（近期章节，用于保持连续性）】\n" + state["prior_chapters"] if state.get("prior_chapters") else ""}
 
 请检查：
 1. 人物行为、能力、关系是否与前文/人设冲突；
@@ -845,8 +853,7 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
     # 演示模式：写入全局 backend/output/。
     project_dir = state.get("project_dir")
     if project_dir:
-        import project as _proj
-        path = _proj.add_chapter(
+        path = proj.add_chapter(
             project_dir,
             state.get("chapter_title", "未命名章节"),
             final_text,
@@ -952,11 +959,21 @@ def start_session(
         cards_dir = DATA_DIR
         chapters_dir = OUTPUT_DIR
 
+    # —— 跨章节上下文（#1）——
+    # 用户没给「上一章概括」时，自动从近期章节尾部拼出前情摘要；
+    # 并把近期章节片段作为写作/规划/连续性检查的检索上下文（仅项目模式有效）。
+    prior_chapters = ""
+    if project_dir:
+        prior_chapters = proj.get_recent_chapter_excerpts(project_dir, recent_n=2, tail_chars=900)
+        if not previous_summary:
+            previous_summary = proj.get_recent_chapter_excerpts(project_dir, recent_n=1, tail_chars=500)
+
     initial_state: CollabNovelState = {
         "session_id": sid,
         "chapter_title": chapter_title,
         "chapter_outline": chapter_outline,
         "previous_summary": previous_summary,
+        "prior_chapters": prior_chapters,
         "character_cards": load_card_file("characters.json", character_ids, cards_dir),
         "plot_cards": load_card_file("stories.json", plot_ids, cards_dir) or load_card_file("plots.json", plot_ids, cards_dir),
         "style_cards": load_card_file("styles.json", style_ids, cards_dir),

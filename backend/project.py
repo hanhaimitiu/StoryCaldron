@@ -211,6 +211,47 @@ def read_meta(root: str) -> Dict[str, Any]:
     return _read_db(path)
 
 
+def get_recent_chapter_excerpts(root: str, recent_n: int = 2, tail_chars: int = 900) -> str:
+    """跨章节上下文检索（#1）：取最近 recent_n 章正文尾部拼成「前情片段」。
+
+    只取每章尾部 tail_chars 字（最近发生的事对连续性最相关），避免整章灌入撑爆上下文；
+    返回带章节标题的纯文本块，给写作/规划/连续性检查节点当检索上下文。无章节时返回空串。
+    """
+    chapters = read_meta(root).get("chapters", [])
+    if not chapters:
+        return ""
+    pick = chapters[-recent_n:]
+    parts = []
+    for j, ch in enumerate(pick):
+        no = len(chapters) - recent_n + j + 1  # 该章在项目里的真实序号
+        fp = os.path.join(root, CHAPTERS_DIR, ch.get("file", ""))
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        body = text.split("\n", 1)[1].lstrip("\n") if text.startswith("# ") else text
+        tail = body[-tail_chars:] if len(body) > tail_chars else body
+        parts.append(f"### 第{no}章 {ch.get('title', '')}\n……（前文节选）\n{tail}")
+    return "\n\n".join(parts)
+
+
+def append_canon(root: str, chapter_title: str, proposal: str) -> str:
+    """正典落盘（#4）：把审批通过的正典提案追加到项目 canon.md，按章节累积成「小说圣经」。
+
+    root 为项目目录时写 <root>/canon.md；演示模式（无项目）由调用方传 OUTPUT_DIR。
+    返回 canon.md 路径。文件不存在时先写一级标题。
+    """
+    path = os.path.join(root, "canon.md")
+    stamp = datetime.now().isoformat(timespec="seconds")
+    new_file = not os.path.exists(path)
+    block = (("# 小说正典（Canon）\n\n" if new_file else "")
+             + f"## [{stamp}] {chapter_title}\n\n{proposal.strip()}\n")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(block)
+    return path
+
+
 def clear_chapters(root: str) -> int:
     """清空项目所有章节：删除 chapters/ 下的 txt 文件并重置 project.json 的章节索引。
 
