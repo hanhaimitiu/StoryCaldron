@@ -62,11 +62,12 @@ set LLM_BASE_URL=http://localhost:8080
 - 自动审稿和多轮修改
 - 支持人工审核和编辑功能
 - 可提交修改建议让 AI 重写
+- 去AI风卡：写作与润色节点注入，约束生成文本规避 AI 套路文风（空洞金句、套路词、强行升华等）
 
 ### 数据管理
 - 解析结果自动保存到 JSON 文件
 - 支持查看、添加、编辑、删除已保存的素材
-- 管理人物、文风、剧情、世界观等设定
+- 管理人物、文风、剧情、世界观、去AI风等设定
 
 ### 多 Agent 协作创作
 新增 `backend/collab_novel_agent.py`，按以下工作流驱动多个 Agent 协作完成一章：
@@ -86,6 +87,7 @@ set LLM_BASE_URL=http://localhost:8080
 - **文风卡** (`styles.json`)
 - **伏笔卡** (`foreshadowing.json`)
 - **世界观卡** (`wordviews.json`)
+- **去AI风卡** (`anti_ai.json`)：作者手写/从 MD 导入的「去 AI 味」禁忌要点，写作与润色节点据此规避套路文风
 
 #### 用法一：网页工作台（推荐）
 
@@ -105,7 +107,7 @@ cd web && npm run build
 .venv\Scripts\python.exe backend\web_server.py   # 打开 http://127.0.0.1:8765
 ```
 
-网页上可以做的事：新建/切换项目、五类素材卡增删改、把 Markdown 设定转成卡片、写一章并实时看到每个 Agent 节点的耗时与输出、浏览已写章节正文。
+网页上可以做的事：新建/切换项目、六类素材卡（含去AI风）增删改、把 Markdown 设定转成卡片、写一章并实时看到每个 Agent 节点的耗时与输出、浏览已写章节正文。
 
 #### 用法二：命令行入口（项目模式）
 
