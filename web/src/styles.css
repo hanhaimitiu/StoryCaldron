@@ -336,8 +336,18 @@ textarea { resize: vertical; }
 .composer .outline { width: 100%; margin-top: 8px; }
 .composer .tools { margin-top: 6px; }
 .composer .more { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.composer .id-row { display: flex; gap: 8px; }
-.composer .id-row input { flex: 1; min-width: 0; }
+/* 高级选项：卡片按类型分组勾选（取代旧的手填 id 输入框） */
+.composer .card-pick {
+  background: var(--panel); border: 1px solid var(--border-soft);
+  border-radius: 8px; padding: 8px 10px;
+}
+.composer .cp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.composer .cp-label { font-size: 13px; font-weight: 600; }
+.composer .cp-cnt { font-size: 11px; color: var(--muted); }
+.composer .cp-link { margin-left: auto; font-size: 12px; }
+.composer .cp-items { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.composer .cp-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; max-width: 100%; }
+.composer .cp-item em { font-style: normal; color: var(--dim); font-size: 11px; }
 
 /* ---------------- 右侧抽屉 ---------------- */
 .drawer {
