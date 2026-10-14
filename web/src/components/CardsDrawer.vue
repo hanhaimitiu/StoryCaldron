@@ -38,7 +38,7 @@ async function remove(type, id) {
 
 const cardName = (it) => it.name || it.title || it.content || it.world_theme || ''
 const cardDesc = (it) =>
-  it.personality || it.description || it.style_overall || it.status || it.power_system || ''
+  it.personality || it.description || it.style_overall || it.status || it.power_system || it.content || ''
 
 // ---- MD 导入 ----
 const md = ref('')
@@ -62,7 +62,7 @@ async function runImport() {
   const keys = Object.keys(stats)
   mdResult.value = keys.length
     ? '转换完成：' + keys.map((k) => `${k} ${stats[k]} 张`).join('，')
-    : '未识别到卡片。请检查二级标题是否包含：人物 / 剧情 / 文风 / 伏笔 / 世界观。'
+    : '未识别到卡片。请检查二级标题是否包含：人物 / 剧情 / 文风 / 伏笔 / 世界观 / 去AI风。'
 }
 
 const types = computed(() => store.cardTypes || [])
@@ -75,7 +75,7 @@ const bookText = ref('')
 const bookRunning = computed(() => ['pending', 'running'].includes(store.parse.status))
 const CARD_LABELS = {
   character: '人物卡', plot: '剧情卡', style: '文风卡',
-  foreshadowing: '伏笔卡', worldview: '世界观卡',
+  foreshadowing: '伏笔卡', worldview: '世界观卡', anti_ai: '去AI风卡',
 }
 
 function onBookFile(e) {
@@ -144,7 +144,7 @@ const parseStatText = computed(() => {
   const s = store.parse.stats
   const map = {
     chapters: '章节', character: '人物卡', plot: '剧情卡',
-    style: '文风卡', foreshadowing: '伏笔卡', worldview: '世界观卡',
+    style: '文风卡', foreshadowing: '伏笔卡', worldview: '世界观卡', anti_ai: '去AI风卡',
   }
   return Object.keys(map)
     .filter((k) => k in s)
@@ -212,7 +212,7 @@ const parseStatText = computed(() => {
     <!-- MD 导入 -->
     <div v-else-if="tab === 'md'" class="dbody">
       <p class="dim">
-        用二级标题分大类（人物 / 剧情 / 文风 / 伏笔 / 世界观），三级标题分单张卡。
+        用二级标题分大类（人物 / 剧情 / 文风 / 伏笔 / 世界观 / 去AI风），三级标题分单张卡。
         这是独立工具，不进入小说生成流程。
       </p>
       <textarea v-model="md" class="mdbox" placeholder="## 人物卡&#10;### 陆青崖&#10;- name：陆青崖&#10;- personality：沉稳、重情义"></textarea>

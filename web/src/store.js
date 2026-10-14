@@ -311,7 +311,7 @@ function initParseSel(result) {
 }
 
 function parseSummary(stats) {
-  const map = { chapters: '章节', character: '人物卡', plot: '剧情卡', style: '文风卡', foreshadowing: '伏笔卡', worldview: '世界观卡' }
+  const map = { chapters: '章节', character: '人物卡', plot: '剧情卡', style: '文风卡', foreshadowing: '伏笔卡', worldview: '世界观卡', anti_ai: '去AI风卡' }
   return Object.keys(map)
     .filter((k) => k in (stats || {}))
     .map((k) => `${map[k]} ${stats[k]}`)
