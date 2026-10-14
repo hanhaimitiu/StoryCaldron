@@ -104,23 +104,36 @@ def _build_extract_prompt() -> str:
 _EXTRACT_FIELD_HINT = _build_extract_prompt()
 
 
-def extract_chapter(title: str, body: str) -> Dict[str, List[Dict[str, Any]]]:
+def extract_chapter(title: str, body: str, global_context: str = "") -> Dict[str, List[Dict[str, Any]]]:
     """调用大模型，从一章正文抽取五类卡片。
 
     返回 {ctype: [card, ...]}；模型不可用或解析失败返回空字典（只拆章不抽卡）。
+    global_context: 来自全书全局汇总的上下文（人物总表/剧情主线/本章定位），
+                    让单章抽卡与全书一致，避免人物关系与剧情主线割裂。
     """
     if not body.strip():
         return {}
     system = (
-        "你是一个小说拆书助手。给定一章小说正文，请从中提取出现的人物、剧情线、"
-        "文风特征、伏笔、世界观设定，整理成一个 JSON 对象。"
+        "你是一个小说拆书助手。给定一章小说正文与全书的全局背景，请从中提取出现的人物、"
+        "剧情线、文风特征、伏笔、世界观设定，整理成一个 JSON 对象。"
         "只输出 JSON，不要任何解释或代码块标记。"
     )
+    global_block = ""
+    if global_context:
+        global_block = (
+            "【全书全局背景（抽卡必须与全局一致）】\n"
+            f"{global_context}\n\n"
+            "抽卡对齐要求：\n"
+            "- 人物卡必须与「全局人物总表」对齐：同名人物合并到总表条目，身份/关系从总表继承或补充，不要另起一条；\n"
+            "- 剧情卡要基于「全局剧情主线」描述本章推进，保持连贯，不要被单章切割得支离破碎；\n"
+            "- 伏笔/世界观同样与全局对齐。\n"
+        )
     prompt = f"""章节标题：{title or '（未命名）'}
 
 章节正文：
 {body}
 
+{global_block}
 请提取为如下 JSON 对象（每类是一个对象数组，没有则给空数组）：
 {{
   "characters": [ {{人物卡字段}} ],
@@ -138,7 +151,7 @@ def extract_chapter(title: str, body: str) -> Dict[str, List[Dict[str, Any]]]:
 2. 字段尽量用英文字段名；若模型用中文键，系统会按别名映射，但优先英文字段名；
 3. 找不到对应信息的字段填空字符串 ""；
 4. 不要编造原文没有的关键事实，可对原文做合理归纳；
-5. 同名人物/事物在多处出现时只列一条，关键特征合并。
+5. 同名人物/事物在多处出现时只列一条，关键特征合并（并与全局总表对齐）。
 """
     raw = _call_llm(prompt, system=system, temperature=0.3)
     if not raw:
@@ -154,6 +167,154 @@ def extract_chapter(title: str, body: str) -> Dict[str, List[Dict[str, Any]]]:
             continue
         out[ctype] = [c for c in val if isinstance(c, dict)]
     return out
+
+
+import json
+
+
+# ---------------------------------------------------------------------------
+# 全局汇总（拆书关键：先一次性通读全书，建立全局人物/剧情/世界观，再按章拆卡，
+# 避免逐章孤立抽取导致人物关系与剧情主线割裂）
+# ---------------------------------------------------------------------------
+GLOBAL_TEXT_LIMIT = 60000  # 送入「一次性全局汇总」的整本字符上限；超长则两级（分块摘要->合并）
+
+
+def _summary_system() -> str:
+    return "你是一位资深小说编辑，擅长通读整本书后做全局结构梳理，输出严格的结构化 JSON。"
+
+
+_GLOBAL_SCHEMA_HINT = """输出 JSON 结构：
+{
+  "characters": [ {"name": 姓名, "identity": 身份, "aliases": 别称, "role": 戏份定位, "relationships": [{"target": 相关人物, "relation": 关系}]} ],
+  "plot_arcs": [ {"title": 主线名, "summary": 主线概要, "key_chapters": ["第X章"]} ],
+  "worldviews": [ {"theme": 主题, "setting": 世界设定, "power_system": 力量体系} ],
+  "foreshadowings": [ {"seed": 伏笔, "planted": 埋下处, "payoff": 预期回收} ],
+  "chapter_index": [ {"title": 章节标题, "position": 位置, "summary": 本章概要, "characters": [出场人物], "plot_threads": [推进的剧情线]} ]
+}"""
+
+
+def _summary_once(text: str, titles, local: bool = False) -> Dict[str, Any]:
+    """一次性全局/局部梳理，返回 global_view 字典（解析失败返回 {}）。"""
+    scope = "全书" if not local else "以下若干连续章节"
+    prompt = (
+        f"这是{scope}的完整正文（共 {len(titles)} 章）。请通读后做结构梳理，"
+        + _GLOBAL_SCHEMA_HINT
+        + """
+要求：
+1. 人物关系必须跨章一致，同一人物只列一条并合并其全部关系；
+2. 剧情主线（plot_arcs）要连贯，不要被章节切割得支离破碎；
+3. chapter_index 每章一条，给出本章概要、出场人物与推进的剧情线；
+4. 只输出一个 JSON 对象，不要解释或代码块标记。
+
+正文：
+"""
+        + text
+    )
+    raw = _call_llm(prompt, system=_summary_system(), temperature=0.2)
+    if not raw:
+        return {}
+    obj = _extract_json(raw)
+    return obj if isinstance(obj, dict) else {}
+
+
+def _merge_views(locals_views: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """把多批局部梳理合并成统一全局视图（人物跨批合并去重）。"""
+    payload = json.dumps(locals_views, ensure_ascii=False)
+    prompt = (
+        "下面是同一本书不同部分的局部梳理（JSON 数组）。请合并成一份统一的全局梳理 JSON，"
+        + _GLOBAL_SCHEMA_HINT
+        + """
+要求：
+1. 同名人物合并为一条，relationships 合并去重；
+2. plot_arcs 按时间/逻辑串成连贯主线；
+3. chapter_index 合并所有章节；
+4. 只输出一个合并后的 JSON，不要解释。
+
+局部梳理：
+"""
+        + payload
+    )
+    raw = _call_llm(prompt, system=_summary_system(), temperature=0.2)
+    if not raw:
+        return {}
+    obj = _extract_json(raw)
+    return obj if isinstance(obj, dict) else {}
+
+
+def summarize_book(chapters: List[Tuple[str, str]], stop_check: Optional[Any] = None) -> Dict[str, Any]:
+    """通读全书建立全局视图。
+
+    - 整本正文在 GLOBAL_TEXT_LIMIT 内：一次性全局汇总；
+    - 超长：分块做局部摘要，再合并成统一全局视图；
+    - 模型不可用：返回 {}（上层退化为逐章孤立抽取，与原行为一致）。
+    """
+    full_text = "\n\n".join(f"{t}\n{b}" for t, b in chapters)
+    titles = [t for t, _ in chapters]
+    if len(full_text) <= GLOBAL_TEXT_LIMIT:
+        return _summary_once(full_text, titles, local=False)
+    batches: List[List[Tuple[str, str]]] = []
+    cur: List[Tuple[str, str]] = []
+    cur_len = 0
+    for t, b in chapters:
+        if cur and cur_len + len(b) > GLOBAL_TEXT_LIMIT:
+            batches.append(cur)
+            cur = []
+            cur_len = 0
+        cur.append((t, b))
+        cur_len += len(b)
+    if cur:
+        batches.append(cur)
+    locals_views = []
+    for batch in batches:
+        if stop_check and stop_check():
+            break
+        bt = "\n\n".join(f"{t}\n{b}" for t, b in batch)
+        locals_views.append(_summary_once(bt, [t for t, _ in batch], local=True))
+    if not locals_views:
+        return {}
+    if len(locals_views) == 1:
+        return locals_views[0]
+    return _merge_views(locals_views)
+
+
+def _global_context_for(global_view: Dict[str, Any], title: str) -> str:
+    """把全局视图压缩成给单章抽取用的上下文文本（人物总表/剧情主线/本章定位）。
+
+    容忍全局汇总的中英文键名（characters/人物、plot_arcs/剧情主线、relationships/关系 等），
+    因为不同模型返回的键可能不一致；取不到则退化为空（退化为逐章孤立抽取）。
+    """
+    if not isinstance(global_view, dict):
+        return ""
+    chars = global_view.get("characters") or global_view.get("人物") or global_view.get("人物卡") or []
+    arcs = global_view.get("plot_arcs") or global_view.get("剧情主线") or global_view.get("剧情") or []
+    idx = global_view.get("chapter_index") or global_view.get("章节索引") or []
+
+    lines: List[str] = ["【全局人物总表】"]
+    for c in chars or []:
+        if not isinstance(c, dict):
+            continue
+        rels = ", ".join(
+            f"{r.get('target', r.get('相关人物', ''))}:{r.get('relation', r.get('关系', ''))}"
+            for r in (c.get("relationships") or c.get("关系") or [])
+        )
+        name = c.get("name") or c.get("姓名") or ""
+        ident = c.get("identity") or c.get("身份") or ""
+        if name:
+            lines.append(f"- {name}（{ident}；关系：{rels}）")
+    lines.append("【全局剧情主线】")
+    for a in arcs or []:
+        if not isinstance(a, dict):
+            continue
+        lines.append(f"- {a.get('title', a.get('主线名', ''))}：{a.get('summary', a.get('概要', ''))}")
+    this = next((c for c in idx if isinstance(c, dict) and c.get("title") == title), None)
+    if this:
+        chs = this.get("characters") or this.get("出场人物") or []
+        thr = this.get("plot_threads") or this.get("推进的剧情线") or []
+        lines.append(
+            f"【本章（{title}）在全局中的定位】{this.get('summary', this.get('概要', ''))}；"
+            f"出场：{', '.join(chs)}；推进：{', '.join(thr)}"
+        )
+    return "\n".join(lines)
 
 
 def _normalize(ctype: str, card: Dict[str, Any]) -> Dict[str, Any]:
@@ -180,20 +341,30 @@ def plan_book(
     txt: str,
     progress_cb: Optional[Any] = None,
     stop_check: Optional[Any] = None,
+    global_view: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """只解析、不写入：切章 + 逐章抽卡 + 跨章按 id 合并，返回方案供前端预览/勾选。
+    """只解析、不写入：先通读全书做全局汇总，再带全局上下文逐章抽卡并跨章合并。
 
-    返回 {"chapters": [(title, body), ...], "cards": {ctype: [card, ...]}, "chapter_count": N}。
-    模型不可用则 cards 为空；stop_check() 返回 True 时中止。
+    返回 {"chapters": [(title, body), ...], "cards": {ctype: [card, ...]},
+          "chapter_count": N, "global_view": {...}}。
+    模型不可用则 global_view 为空、cards 为空（只拆章）；stop_check() 返回 True 时中止。
     """
     chapters = split_chapters(txt)
     total = len(chapters)
+    if global_view is None:
+        if progress_cb:
+            progress_cb(0, total, "正在通读全书，建立全局理解…")
+        global_view = summarize_book(chapters, stop_check=stop_check)
+    if progress_cb:
+        progress_cb(0, total, "已完成全书全局理解，开始按章拆卡")
+
     acc: Dict[str, Dict[str, Dict[str, Any]]] = {c: {} for c in CARD_SCHEMA}  # ctype -> id -> card
 
     for i, (title, body) in enumerate(chapters, 1):
         if stop_check and stop_check():
             break
-        extracted = extract_chapter(title, body)
+        ctx = _global_context_for(global_view, title)
+        extracted = extract_chapter(title, body, global_context=ctx)
         for ctype, cards in extracted.items():
             for card in cards:
                 norm = _normalize(ctype, card)
@@ -209,6 +380,7 @@ def plan_book(
         "chapters": chapters,  # list of (title, body)
         "cards": {c: list(by_id.values()) for c, by_id in acc.items()},
         "chapter_count": total,
+        "global_view": global_view,
     }
 
 
