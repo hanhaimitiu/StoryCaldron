@@ -31,6 +31,7 @@ CARD_TYPES = {
     "style": ("styles.json", "文风卡"),
     "foreshadowing": ("foreshadowing.json", "伏笔卡"),
     "worldview": ("wordviews.json", "世界观卡"),
+    "anti_ai": ("anti_ai.json", "去AI风卡"),  # 去AI风卡：写作/润色节点注入，规避生成文本的 AI 套路
 }
 
 # 各类卡片的常用字段（用于交互式创建时逐个提示）
@@ -40,6 +41,7 @@ CARD_FIELDS = {
     "style": ["id", "title", "style_overall", "sentence_feature", "word_preference"],
     "foreshadowing": ["id", "content", "status"],
     "worldview": ["id", "world_theme", "power_system", "world_rule"],
+    "anti_ai": ["id", "title", "content"],  # title=该条禁忌主题；content=具体规避要点（自由文本，MD 导入时整段作为一张卡）
 }
 
 PROJECT_JSON = "project.json"

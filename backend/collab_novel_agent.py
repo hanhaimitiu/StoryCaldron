@@ -178,6 +178,7 @@ def start_session(
     style_ids: Optional[List[str]] = None,
     foreshadowing_ids: Optional[List[str]] = None,
     worldview_ids: Optional[List[str]] = None,
+    anti_ai_ids: Optional[List[str]] = None,
     project_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """初始化一章创作会话。
@@ -221,6 +222,8 @@ def start_session(
         "style_cards": load_card_file("styles.json", style_ids, cards_dir),
         "foreshadowing_cards": load_card_file("foreshadowing.json", foreshadowing_ids, cards_dir),
         "worldview_cards": load_card_file("wordviews.json", worldview_ids, cards_dir),
+        # 去AI风卡：写作/润色节点注入，引导模型规避 AI 套路文风（无则空列表，prompt 自动跳过）
+        "anti_ai_cards": load_card_file("anti_ai.json", anti_ai_ids, cards_dir),
         "chapter_plan": "",
         "plan_approved": False,
         "draft": "",

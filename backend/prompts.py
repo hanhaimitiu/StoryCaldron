@@ -85,6 +85,7 @@ def build_writer_prompt(state: CollabNovelState) -> str:
 {format_cards(state.get('foreshadowing_cards', []), '伏笔卡')}
 {format_cards(state.get('worldview_cards', []), '世界观卡')}
 {style_text}
+{format_cards(state.get('anti_ai_cards', []), '去AI风卡')}
 
 {f"【前文片段（近期章节，用于保持连续性）】\n" + state["prior_chapters"] if state.get("prior_chapters") else ""}
 
@@ -95,6 +96,8 @@ def build_writer_prompt(state: CollabNovelState) -> str:
 4. 文风完全贴合【文风卡】要求。
 5. 段落紧凑，段首缩进两个字符，段与段之间不留空行。
 6. 不要刻意埋钩子或升华。
+7. 严格规避【去AI风卡】列出的 AI 套路：少用空洞总结式金句，少用「仿佛/似乎/不禁/那一刻/殊不知」等套路词，
+   避免每段强行升华或灌鸡汤、避免千篇一律的对仗排比；多用具体动作、感官细节与口语化表达推进叙事，让文字有呼吸感。
 """
 
 
@@ -162,6 +165,7 @@ def build_style_edit_prompt(state: CollabNovelState) -> str:
     return f"""你是一位小说文风编辑。请根据文风卡对当前草稿进行润色，使风格统一、语言精炼。
 
 {format_cards(state.get('style_cards', []), '文风卡')}
+{format_cards(state.get('anti_ai_cards', []), '去AI风卡')}
 
 【本章计划】
 {state.get('chapter_plan', '无')}
@@ -174,6 +178,7 @@ def build_style_edit_prompt(state: CollabNovelState) -> str:
 2. 调整句式、用词、节奏，使其符合文风卡要求；
 3. 若存在人工修改意见，必须优先、逐条落实；
 4. 直接输出修改后的完整正文。
+5. 同时规避【去AI风卡】列出的 AI 套路，把机器腔改回自然、有呼吸感的人话。
 """
 
 

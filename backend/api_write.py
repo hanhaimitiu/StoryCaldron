@@ -129,6 +129,7 @@ def api_write_start(body):
         style_ids=ids_of(body.get("styles")),
         foreshadowing_ids=ids_of(body.get("fore")),
         worldview_ids=ids_of(body.get("worlds")),
+        anti_ai_ids=ids_of(body.get("anti_ai")),
         project_dir=root,
     )["state"]
 

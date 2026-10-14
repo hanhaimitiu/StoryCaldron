@@ -85,6 +85,7 @@ class CollabNovelState(TypedDict, total=False):
     style_cards: List[Dict[str, Any]]
     foreshadowing_cards: List[Dict[str, Any]]
     worldview_cards: List[Dict[str, Any]]
+    anti_ai_cards: List[Dict[str, Any]]  # 去AI风卡：写作/润色节点据此规避 AI 套路文风
 
     # 工作流中间产物
     chapter_plan: str
