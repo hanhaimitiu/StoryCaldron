@@ -1,13 +1,17 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { store, sendAction } from '../store'
+import { renderMarkdown } from '../markdown'
 
 const mode = ref(null) // null | 'revise' | 'edit'
 const fb = ref('')
 const txt = ref('')
 
 const draft = computed(() => store.session.draft || '（空）')
-const plan = computed(() => store.session.plan || '（无）')
+// 本章计划按 Markdown 渲染（来自本地 LLM，内容可信；renderMarkdown 已先做 HTML 转义防注入）
+const planHtml = computed(() =>
+  store.session.plan ? renderMarkdown(store.session.plan) : '<p>（无）</p>'
+)
 
 async function act(action, extra = {}) {
   mode.value = null
@@ -25,7 +29,7 @@ async function act(action, extra = {}) {
 
     <div class="rsec">
       <b>本章计划</b>
-      <div class="plan">{{ plan }}</div>
+      <div class="plan md" v-html="planHtml"></div>
     </div>
 
     <div class="rsec">

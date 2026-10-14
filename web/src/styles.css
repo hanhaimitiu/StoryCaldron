@@ -290,6 +290,32 @@ textarea { resize: vertical; }
 .rsec { margin-bottom: 10px; }
 .rsec b { font-size: 12px; color: var(--muted); font-weight: 500; }
 .rsec .plan { font-size: 13px; margin-top: 4px; }
+/* 本章计划按 Markdown 渲染时的排版 */
+.rsec .plan.md { line-height: 1.6; }
+.rsec .plan.md h1, .rsec .plan.md h2, .rsec .plan.md h3,
+.rsec .plan.md h4, .rsec .plan.md h5, .rsec .plan.md h6 {
+  margin: 10px 0 6px; font-size: 14px; line-height: 1.4; color: var(--text);
+}
+.rsec .plan.md h1 { font-size: 16px; }
+.rsec .plan.md h2 { font-size: 15px; }
+.rsec .plan.md p { margin: 6px 0; }
+.rsec .plan.md ul, .rsec .plan.md ol { margin: 6px 0; padding-left: 20px; }
+.rsec .plan.md li { margin: 3px 0; }
+.rsec .plan.md code {
+  background: var(--bg); border: 1px solid var(--border-soft);
+  border-radius: 4px; padding: 1px 5px; font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.rsec .plan.md pre {
+  background: var(--bg); border: 1px solid var(--border-soft);
+  border-radius: 8px; padding: 10px; overflow: auto; margin: 6px 0;
+}
+.rsec .plan.md pre code { background: none; border: none; padding: 0; }
+.rsec .plan.md blockquote {
+  margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.rsec .plan.md hr { border: none; border-top: 1px solid var(--border-soft); margin: 10px 0; }
 .rsec .draft {
   background: var(--bg); border: 1px solid var(--border-soft); border-radius: 8px;
   padding: 12px; margin: 6px 0 0; max-height: 320px; overflow: auto;
