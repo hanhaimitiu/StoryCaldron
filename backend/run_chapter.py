@@ -311,7 +311,7 @@ def cmd_import_md(args):
     print("\n=== 转换完成 ===")
     if not stats:
         print("未从 MD 中识别到任何卡片。二级标题需包含："
-              "人物 / 剧情 / 文风 / 伏笔 / 世界观 等关键词。")
+              "人物 / 剧情 / 文风 / 伏笔 / 世界观 / 去AI风 等关键词。")
         return
     for ctype, cnt in stats.items():
         print(f"  {proj.CARD_TYPES[ctype][1]}：{cnt} 张")
@@ -343,11 +343,12 @@ def cmd_write(args):
         style_ids=ids(args.styles),
         foreshadowing_ids=ids(args.fore),
         worldview_ids=ids(args.worlds),
+        anti_ai_ids=ids(args.anti_ai),
         project_dir=root,
     )["state"]
 
     if not state.get("character_cards") and not state.get("plot_cards") \
-            and not state.get("style_cards"):
+            and not state.get("style_cards") and not state.get("anti_ai_cards"):
         print(" 该项目还没有任何素材卡，Agent 只能凭大纲自由发挥。"
               "可先跑 `setup`/`new-card` 建卡，或 `init --demo` 塞演示卡。")
 
@@ -403,6 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--styles", default="", help="文风卡 id，逗号分隔；留空=全部")
     sp.add_argument("--fore", default="", help="伏笔卡 id，逗号分隔；留空=全部")
     sp.add_argument("--worlds", default="", help="世界观卡 id，逗号分隔；留空=全部")
+    sp.add_argument("--anti-ai", default="", help="去AI风卡 id，逗号分隔；留空=全部")
     sp.add_argument("--auto", action="store_true", help="跳过人工审核，自动通过后跑完")
 
     # import-md（独立工具：MD -> 卡片 JSON，不进入小说生成流程）

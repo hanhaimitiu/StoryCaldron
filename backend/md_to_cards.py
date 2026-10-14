@@ -5,7 +5,7 @@ MD -> 卡片 JSON 转换工具（独立 Agent 模块）
 
 这是一个「建卡」工具，不是小说生成流程的一部分：
     你用 Markdown 自由书写小说设定（人物 / 剧情 / 文风 / 伏笔 / 世界观）
-        -> 本模块作为一个独立的 Agent，把 MD 解析成项目目录里 cards/ 下的五类 JSON 卡片
+        -> 本模块作为一个独立的 Agent，把 MD 解析成项目目录里 cards/ 下的六类（含去AI风）JSON 卡片
         -> 之后 run_chapter.py write 再去读取这些卡片写小说
 
 设计要点：
@@ -85,6 +85,14 @@ CARD_SCHEMA: Dict[str, Dict[str, Any]] = {
             "world_rule": ["规则", "世界规则", "法则", "设定", "规矩"],
         },
     },
+    "anti_ai": {
+        "label": "去AI风卡",
+        "fields": ["id", "title", "content"],
+        "field_aliases": {
+            "title": ["标题", "主题", "名称", "禁忌"],
+            "content": ["内容", "要点", "要求", "规避", "说明", "细则"],
+        },
+    },
 }
 
 # 章节标题 -> 卡片类型（宽容匹配，命中任一关键词即可）
@@ -94,6 +102,7 @@ SECTION_KEYWORDS: Dict[str, List[str]] = {
     "style": ["文风", "风格", "笔风", "文笔"],
     "foreshadowing": ["伏笔", "悬念", "暗线"],
     "worldview": ["世界观", "世界", "设定", "背景"],
+    "anti_ai": ["去ai风", "去ai味", "反ai", "反ai味", "ai味", "去ai化", "去人工智能味", "去机器味"],
 }
 
 # 显式指定 id 的别名（优先级最高）
@@ -241,7 +250,7 @@ def _apply_defaults(ctype: str, title: str, card: Dict[str, Any], explicit_id: O
     # 标题/名字兜底
     if ctype == "character" and not card.get("name") and title:
         card["name"] = title
-    if ctype in ("plot", "style") and not card.get("title") and title:
+    if ctype in ("plot", "style", "anti_ai") and not card.get("title") and title:
         card["title"] = title
     if ctype == "worldview" and not card.get("world_theme") and title:
         card["world_theme"] = title
@@ -357,7 +366,7 @@ def convert_to_project(
 def convert_to_dir(
     md_path: str, out_dir: str, use_llm: bool = True, merge: bool = True
 ) -> Tuple[Dict[str, int], Dict[str, List[Dict[str, Any]]]]:
-    """直接把五类 JSON 写到某个目录（不建项目脚手架）。"""
+    """直接把六类（含去AI风）JSON 写到某个目录（不建项目脚手架）。"""
     os.makedirs(out_dir, exist_ok=True)
     collected = _collect(md_path, use_llm)
     stats: Dict[str, int] = {}
@@ -395,7 +404,7 @@ SETTING_TEMPLATE = """# 我的小说设定
 
 > 说明：用二级标题（##）区分卡片大类，三级标题（###）区分单张卡。
 > 每张卡内部用「- 字段：值」列出信息，也可直接写散文，大模型会自动归纳。
-> 支持的类型：人物 / 剧情 / 文风 / 伏笔 / 世界观。
+> 支持的类型：人物 / 剧情 / 文风 / 伏笔 / 世界观 / 去AI风。
 
 ## 人物卡
 
@@ -438,6 +447,12 @@ SETTING_TEMPLATE = """# 我的小说设定
 - 主题：低魔仙侠宗门世界
 - 力量体系：炼气、筑基、金丹、元婴
 - 世界规则：灵气稀薄，功法传承严苛
+
+## 去AI风卡
+
+### 规避套路
+- 内容：少用「仿佛/似乎/不禁/那一刻/殊不知」等套路词；避免每段强行升华或灌鸡汤；
+  少用空洞总结式金句；避免千篇一律的对仗排比；多用具体动作、感官细节与口语化表达推进叙事。
 """
 
 
