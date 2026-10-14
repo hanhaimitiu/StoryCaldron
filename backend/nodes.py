@@ -277,11 +277,13 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
     existing_foreshadowing = {str(item.get("id", i)): item for i, item in enumerate(state.get("foreshadowing_cards", []))}
     for upd in foreshadowing_updates:
         key = str(upd.get("id", uuid.uuid4().hex))
+        upd["id"] = key  # 规整 id 为字符串，防止大模型返回数字导致类型漂移
         existing_foreshadowing[key] = upd
 
     existing_plots = {str(item.get("id", i)): item for i, item in enumerate(state.get("plot_cards", []))}
     for upd in plot_updates:
         key = str(upd.get("id", uuid.uuid4().hex))
+        upd["id"] = key  # 规整 id 为字符串，防止大模型返回数字导致类型漂移
         existing_plots[key] = upd
 
     # 合并新出场人物 / 新世界观到已有卡片（按 id 覆写，避免重复）
@@ -297,6 +299,7 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
         if nc_name and nc_name in existing_names:
             continue  # 与已有同名人物，跳过避免重复建卡
         key = str(nc.get("id") or f"char_{uuid.uuid4().hex[:6]}")
+        nc["id"] = key  # 规整 id 为字符串，保证类型统一
         existing_characters[key] = nc
         existing_names.add(nc_name)
     existing_worldviews = {str(item.get("id", i)): item
@@ -305,6 +308,7 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
         if not isinstance(nw, dict):
             continue
         key = str(nw.get("id") or f"world_{uuid.uuid4().hex[:6]}")
+        nw["id"] = key  # 规整 id 为字符串，保证类型统一
         existing_worldviews[key] = nw
 
     # 写回项目 / 全局 cards 目录

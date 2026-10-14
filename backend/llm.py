@@ -92,10 +92,20 @@ def load_card_file(filename: str, ids: Optional[List[str]] = None,
     # 统一成列表
     if isinstance(data, dict):
         items = list(data.values())
+        # 卡片缺 id 时用 json key 兜底，保证 id 始终有值且为字符串（前后端统一）
+        for k, v in data.items():
+            if isinstance(v, dict) and not v.get("id"):
+                v["id"] = str(k)
     elif isinstance(data, list):
         items = data
     else:
         items = []
+
+    # 读取侧防御：把 id 字段规整为字符串，保证即使历史落盘数据残留数字 id，
+    # 前端 / API 拿到的也是字符串，前后端卡片 id 类型完全统一。
+    for item in items:
+        if isinstance(item, dict):
+            item["id"] = str(item.get("id", ""))
 
     if not ids:
         return items
@@ -128,7 +138,10 @@ def save_card_file(filename: str, items: List[Dict[str, Any]],
     for item in items:
         if not isinstance(item, dict):
             continue
+        # 把 id 字段同步规整为字符串（与 project.create_card 对齐）：避免大模型返回的
+        # 数字 id / 缺失 id 落盘后类型漂移，保证前后端卡片 id 类型完全统一。
         key = str(item.get("id", uuid.uuid4().hex))
+        item["id"] = key
         db[key] = item
 
     with open(path, "w", encoding="utf-8") as f:
