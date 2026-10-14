@@ -327,7 +327,7 @@ def cmd_write(args):
     title = args.title or ask("请输入章节标题：")
     outline = args.outline or ask("请输入本章大纲：")
     # --prev 省略（None）才询问；显式传 --prev "" 表示确实没有上一章
-    prev = args.prev if args.prev is not None else ask("请输入上一章概括（可直接回车跳过）：")
+    prev = args.prev if args.prev is not None else ask("请输入上一章全文（留空则自动读取上一章全文，可直接回车跳过）：")
 
     def ids(raw):
         xs = [x.strip() for x in raw.split(",") if x.strip()]
@@ -397,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("write", parents=[common], help="在项目内写一章")
     sp.add_argument("--title", default="", help="章节标题")
     sp.add_argument("--outline", default="", help="本章大纲")
-    sp.add_argument("--prev", default=None, help="上一章概括（可选，省略时会交互询问）")
+    sp.add_argument("--prev", default=None, help="上一章全文（可选，留空则自动读取上一章全文）")
     sp.add_argument("--characters", default="", help="人物卡 id，逗号分隔；留空=全部")
     sp.add_argument("--plots", default="", help="剧情卡 id，逗号分隔；留空=全部")
     sp.add_argument("--styles", default="", help="文风卡 id，逗号分隔；留空=全部")

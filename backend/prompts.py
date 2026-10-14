@@ -17,7 +17,7 @@ def build_planner_prompt(state: CollabNovelState) -> str:
     """规划节点：根据大纲、素材、前文、全书大纲生成本章详细计划。"""
     return f"""你是一位资深小说大纲规划师。请根据以下信息，为即将撰写的章节生成一份详细的写作计划。
 
-【上一章概括】
+【上一章全文（供模仿文风）】
 {state.get('previous_summary', '无')}
 
 【本章大纲】
@@ -74,7 +74,7 @@ def build_writer_prompt(state: CollabNovelState) -> str:
     style_text = format_cards(state.get("style_cards", []), "文风卡")
     return f"""你是一位经验丰富的专业网文作家。请严格根据以下材料撰写本章正文。
 
-【上一章概括】
+【上一章全文（供模仿文风）】
 {state.get('previous_summary', '无')}
 
 【本章计划】
@@ -102,7 +102,7 @@ def build_continuity_prompt(state: CollabNovelState) -> str:
     """连续性检查节点：检查草稿与前文、人设、伏笔是否一致。"""
     return f"""你是一位小说设定管理员，专门检查草稿是否与已有设定保持一致。
 
-【上一章概括】
+【上一章全文（供模仿文风）】
 {state.get('previous_summary', '无')}
 
 【本章计划】

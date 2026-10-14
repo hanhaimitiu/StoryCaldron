@@ -196,13 +196,14 @@ def start_session(
         chapters_dir = OUTPUT_DIR
 
     # —— 跨章节上下文（#1）——
-    # 用户没给「上一章概括」时，自动从近期章节尾部拼出前情摘要；
-    # 并把近期章节片段作为写作/规划/连续性检查的检索上下文（仅项目模式有效）。
+    # prior_chapters：近期章节截断前情片段，给写作/规划/连续性检查节点当检索上下文；
+    # previous_summary：用户没给时，自动取【上一章全文】（而非截断摘要），
+    #   让写作节点以 One Shot 方式直接模仿上一章文风与行文节奏（仅项目模式有效）。
     prior_chapters = ""
     if project_dir:
         prior_chapters = proj.get_recent_chapter_excerpts(project_dir, recent_n=2, tail_chars=900)
         if not previous_summary:
-            previous_summary = proj.get_recent_chapter_excerpts(project_dir, recent_n=1, tail_chars=500)
+            previous_summary = proj.get_recent_chapter_full(project_dir)
 
     # —— 全书大纲/结构圣经（#2）——
     # 项目模式加载 outline.md，供规划节点对齐整体走向；定稿后再把本章进展追加回去。

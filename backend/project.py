@@ -236,6 +236,27 @@ def get_recent_chapter_excerpts(root: str, recent_n: int = 2, tail_chars: int = 
     return "\n\n".join(parts)
 
 
+def get_recent_chapter_full(root: str) -> str:
+    """取最近一章的完整正文（含标题），作为「上一章全文」供写作节点 One Shot 模仿文风。
+
+    与 get_recent_chapter_excerpts（截断前情片段，仅取尾部）不同：这里返回整章正文，
+    让新章节直接对齐上一章的文风与行文节奏；无章节时返回空串。
+    """
+    chapters = read_meta(root).get("chapters", [])
+    if not chapters:
+        return ""
+    ch = chapters[-1]
+    no = len(chapters)
+    fp = os.path.join(root, CHAPTERS_DIR, ch.get("file", ""))
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    body = text.split("\n", 1)[1].lstrip("\n") if text.startswith("# ") else text
+    return f"### 第{no}章 {ch.get('title', '')}\n\n{body}"
+
+
 def append_canon(root: str, chapter_title: str, proposal: str) -> str:
     """正典落盘（#4）：把审批通过的正典提案追加到项目 canon.md，按章节累积成「小说圣经」。
 
