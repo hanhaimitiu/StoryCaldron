@@ -364,6 +364,8 @@ textarea { resize: vertical; }
   border-radius: var(--radius); padding: 12px; margin-bottom: 14px;
 }
 .ctitle { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.ctitle .cid { font-weight: 400; font-size: 11px; color: var(--accent); font-family: ui-monospace, Consolas, monospace; }
+.cform .chint { font-size: 11px; color: var(--dim); margin-bottom: 8px; }
 .cf { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .cf span { font-size: 11px; color: var(--muted); }
 .cbtns { display: flex; gap: 8px; }

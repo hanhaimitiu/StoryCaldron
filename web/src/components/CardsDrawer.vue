@@ -8,6 +8,11 @@ const tab = ref('cards') // cards | md | book
 // ---- 卡片编辑 ----
 const editing = ref(null) // { type, card }
 const fieldsOf = (type) => store.cardFields[type] || ['id']
+// 表单不展示 id：新建时由后端自动分配（api_save_card 兜底 <类型前缀>_<随机>），
+// 编辑时 id 是卡片主键不可改，只在标题旁只读展示，避免用户手动填写无意义的 id。
+const editFields = (type) => fieldsOf(type).filter((f) => f !== 'id')
+// 卡片类型的中文标签（找不到时回退为类型名）
+const typeLabel = (type) => (store.cardTypes.find((t) => t.type === type) || {}).label || type
 const LONG = ['appearance', 'personality', 'ability', 'identity', 'description',
   'style_overall', 'sentence_feature', 'word_preference', 'content',
   'world_theme', 'power_system', 'world_rule']
@@ -175,13 +180,15 @@ const parseStatText = computed(() => {
 
       <div v-if="editing" class="cform">
         <div class="ctitle">
-          编辑 · {{ (types.find((t) => t.type === editing.type) || {}).label || editing.type }}
+          {{ editing.card.id ? '编辑' : '新建' }} · {{ typeLabel(editing.type) }}
+          <span v-if="editing.card.id" class="cid">id: {{ editing.card.id }}</span>
         </div>
-        <label v-for="f in fieldsOf(editing.type)" :key="f" class="cf">
+        <label v-for="f in editFields(editing.type)" :key="f" class="cf">
           <span>{{ f }}</span>
           <textarea v-if="LONG.includes(f)" v-model="editing.card[f]" rows="2"></textarea>
           <input v-else v-model="editing.card[f]" />
         </label>
+        <div v-if="!editing.card.id" class="chint">保存后自动分配 id，无需手动填写。</div>
         <div class="cbtns">
           <button class="primary" @click="submitCard">保存</button>
           <button @click="editing = null">取消</button>
