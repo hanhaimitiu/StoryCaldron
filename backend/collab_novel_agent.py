@@ -83,7 +83,7 @@ class FileCheckpointer(InMemorySaver):
             self.writes = defaultdict(dict, data.get("writes", {}) or {})
             self.blobs = defaultdict(dict, data.get("blobs", {}) or {})
         except Exception as e:
-            print(f"⚠️ 加载会话检查点失败（将新建）: {e}")
+            print(f" 加载会话检查点失败（将新建）: {e}")
 
     def _save(self):
         # 转成可 pickle 的纯 dict 再写（避免 defaultdict 的 lambda 工厂无法序列化）
@@ -322,23 +322,23 @@ def run_with_manual_review(
     sid = state.get("session_id", uuid.uuid4().hex)
     config = {"configurable": {"thread_id": sid}}
 
-    print("\n▶️ 开始执行（将在人工审核处真实暂停）")
+    print("\n 开始执行（将在人工审核处真实暂停）")
     app.invoke(state, config)
 
     idx = 0
     while True:
         gs = app.get_state(config)
         if not gs.next:
-            print("🏁 工作流结束")
+            print(" 工作流结束")
             break
         if "human_review" not in gs.next:
-            print(f"⚠️ 停在非预期节点 {gs.next}，停止")
+            print(f" 停在非预期节点 {gs.next}，停止")
             break
 
         # —— 这里是真实的暂停点，模拟人工介入 ——
         review = reviews[idx] if idx < len(reviews) else {"action": "approved"}
         idx += 1
-        print(f"\n⏸️ 已暂停在人工审核，应用第 {idx} 次人工动作：{review}")
+        print(f"\n 已暂停在人工审核，应用第 {idx} 次人工动作：{review}")
 
         updates: Dict[str, Any] = {
             "waiting_for_human": False,

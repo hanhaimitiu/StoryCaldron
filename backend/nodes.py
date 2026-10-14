@@ -42,7 +42,7 @@ from prompts import (
 @track_step("loader", "加载素材上下文", "读取人物卡、剧情卡、文风卡、伏笔卡、世界观卡")
 def load_context_node(state: CollabNovelState) -> CollabNovelState:
     """加载外部素材卡到状态，供下游 Agent 使用。"""
-    print("\n--- 📚 加载素材上下文 ---")
+    print("\n--- 加载素材上下文 ---")
 
     # 回退读取必须限定在本项目 cards_dir（演示模式为 DATA_DIR）；
     # 绝不能落到默认 DATA_DIR，否则空项目/删光某类卡时会错误混入全局演示卡，破坏项目隔离。
@@ -73,7 +73,7 @@ def load_context_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("planner", "规划本章", "根据大纲和素材生成本章详细计划")
 def plan_chapter_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 🗺️ 规划本章 ---")
+    print("\n--- 规划本章 ---")
 
     prompt = build_planner_prompt(state)
     plan = _call_llm(prompt, system="你是一位擅长拆解网文章节结构的大纲规划师。",
@@ -93,7 +93,7 @@ def plan_chapter_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("card_approver", "审批大纲卡", "判断本章计划是否可行，是否通过或驳回")
 def approve_card_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 🧾 审批大纲卡 ---")
+    print("\n--- 审批大纲卡 ---")
 
     prompt = build_approve_card_prompt(state)
     result = _call_llm(prompt, system="你是一位严格但务实的网文编辑。",
@@ -119,7 +119,7 @@ def approve_card_router(state: CollabNovelState) -> str:
     if state.get("plan_approved"):
         return "approved"
     if state.get("plan_retry_count", 0) >= 3:
-        print("⚠️ 规划反复被驳回，已达上限，强制通过。")
+        print(" 规划反复被驳回，已达上限，强制通过。")
         state["plan_approved"] = True
         return "approved"
     return "rejected"
@@ -127,7 +127,7 @@ def approve_card_router(state: CollabNovelState) -> str:
 
 @track_step("writer", "撰写草稿", "根据计划与素材撰写本章正文")
 def write_draft_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- ✍️ 撰写草稿 ---")
+    print("\n--- 撰写草稿 ---")
 
     prompt = build_writer_prompt(state)
     draft = _call_llm(prompt, system="你是一位高产且注重细节的网文作家。",
@@ -147,7 +147,7 @@ def write_draft_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("continuity_checker", "连续性检查", "检查草稿与前文、人设、伏笔的连续性")
 def check_continuity_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 🔍 连续性检查 ---")
+    print("\n--- 连续性检查 ---")
 
     prompt = build_continuity_prompt(state)
     result = _call_llm(prompt, system="你是一位注重细节的小说设定管理员。",
@@ -178,7 +178,7 @@ def continuity_router(state: CollabNovelState) -> str:
     if not state.get("continuity_has_issue"):
         return "clean"
     if state.get("continuity_fix_count", 0) >= 3:
-        print("⚠️ 连续性问题修复已达上限，强制进入润色。")
+        print(" 连续性问题修复已达上限，强制进入润色。")
         return "clean"
     return "issues_found"
 
@@ -204,7 +204,7 @@ def fix_issues_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("style_editor", "文风润色", "根据文风卡润色正文")
 def style_edit_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 🎨 文风润色 ---")
+    print("\n--- 文风润色 ---")
 
     prompt = build_style_edit_prompt(state)
     edited = _call_llm(prompt, system="你是一位对文字敏感的文风编辑。",
@@ -224,7 +224,7 @@ def style_edit_node(state: CollabNovelState) -> CollabNovelState:
 @track_step("human_review", "人工审核", "暂停等待用户审核与反馈")
 def human_review_node(state: CollabNovelState) -> CollabNovelState:
     """人工审核节点，实际由 LangGraph 的 interrupt_before 触发暂停。"""
-    print("\n--- 👤 人工审核 ---")
+    print("\n--- 人工审核 ---")
     print("当前草稿已就绪，等待人工采纳/修改/提出建议。")
 
     action = state.get("human_action", "")
@@ -245,7 +245,7 @@ def human_review_router(state: CollabNovelState) -> str:
     # 润色回环硬上限：人工反复「修改」超过 STYLE_REVISE_MAX 次，强制通过进入收尾，
     # 避免 style_edit ↔ human_review 无限空转。
     if state.get("style_revise_count", 0) >= STYLE_REVISE_MAX:
-        print(f"⚠️ 人工润色修改已达上限（{STYLE_REVISE_MAX} 次），强制通过进入收尾。")
+        print(f" 人工润色修改已达上限（{STYLE_REVISE_MAX} 次），强制通过进入收尾。")
         return "approved"
     if action == "revise":
         return "revise"
@@ -254,7 +254,7 @@ def human_review_router(state: CollabNovelState) -> str:
 
 @track_step("memory_updater", "更新素材记忆", "更新伏笔卡、剧情卡等长期记忆")
 def update_memory_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 🧠 更新素材记忆 ---")
+    print("\n--- 更新素材记忆 ---")
 
     prompt = build_update_memory_prompt(state)
     raw = _call_llm(prompt, system="你是一位负责维护小说世界观的资料管理员。",
@@ -337,7 +337,7 @@ def update_memory_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("canon_proposer", "提出正典提案", "总结本章正典信息")
 def propose_canon_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 📜 提出正典提案 ---")
+    print("\n--- 提出正典提案 ---")
 
     prompt = build_canon_proposer_prompt(state)
     proposal = _call_llm(prompt, system="你是一位负责维护小说正典的管理员。",
@@ -355,7 +355,7 @@ def propose_canon_node(state: CollabNovelState) -> CollabNovelState:
 
 @track_step("canon_approver", "审批正典", "判断正典提案是否可入库")
 def approve_canon_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- ✅ 审批正典 ---")
+    print("\n--- 审批正典 ---")
 
     prompt = build_canon_approver_prompt(state)
     result = _call_llm(prompt, system="你是一位把控全书走向的总编。",
@@ -380,14 +380,14 @@ def approve_canon_router(state: CollabNovelState) -> str:
     if state.get("canon_approved"):
         return "approved"
     if state.get("canon_retry_count", 0) >= 3:
-        print("⚠️ 正典反复被驳回，已达上限，强制通过。")
+        print(" 正典反复被驳回，已达上限，强制通过。")
         return "approved"
     return "rejected"
 
 
 @track_step("committer", "提交定稿", "保存最终章节并结束工作流")
 def commit_node(state: CollabNovelState) -> CollabNovelState:
-    print("\n--- 💾 提交定稿 ---")
+    print("\n--- 提交定稿 ---")
 
     final_text = state.get("style_edited_draft") or state.get("draft", "")
 
@@ -419,7 +419,7 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
             )
             print(f"   正典已追加：{canon_path}")
         except Exception as e:
-            print(f"⚠️ 正典落盘失败: {e}")
+            print(f" 正典落盘失败: {e}")
 
     # #2 结构圣经：定稿后把本章进展追加进全书大纲（outline.md），形成持续演进的结构圣经。
     if state.get("chapter_plan"):
@@ -443,7 +443,7 @@ def commit_node(state: CollabNovelState) -> CollabNovelState:
             )
             print(f"   大纲已演进：{outline_path}")
         except Exception as e:
-            print(f"⚠️ 大纲落盘失败: {e}")
+            print(f" 大纲落盘失败: {e}")
 
     print(f"   定稿已保存：{path}")
 

@@ -315,7 +315,7 @@ def _collect(md_path: str, use_llm: bool) -> Dict[str, List[Dict[str, Any]]]:
             with open(fp, "r", encoding="utf-8") as f:
                 text = f.read()
         except Exception as e:
-            print(f"⚠️ 读取 {fp} 失败: {e}")
+            print(f" 读取 {fp} 失败: {e}")
             continue
         for sec_title, sec_body in split_sections(text):
             ctype = match_card_type(sec_title)

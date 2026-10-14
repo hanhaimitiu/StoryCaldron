@@ -95,7 +95,7 @@ def ask_action(round_no: int, state: dict) -> dict:
     draft = state.get("style_edited_draft") or state.get("draft") or ""
 
     print("\n" + "=" * 64)
-    print(f"👤 人工审核 · 第 {round_no} 次暂停")
+    print(f" 人工审核 · 第 {round_no} 次暂停")
     print("-" * 64)
     print(f"本章计划：{(state.get('chapter_plan') or '（无）')[:200]}")
     print("-" * 64)
@@ -122,21 +122,21 @@ def ask_action(round_no: int, state: dict) -> dict:
             except EOFError:
                 fb = ""
             if not fb:
-                print("⚠️ 意见为空，请重新选择。")
+                print(" 意见为空，请重新选择。")
                 continue
             return {"action": "revise", "feedback": fb}
 
         if choice in ("3", "全文", "edit"):
             text = read_multiline("请粘贴你的全文：")
             if not text.strip():
-                print("⚠️ 内容为空，请重新选择。")
+                print(" 内容为空，请重新选择。")
                 continue
             return {"action": "edit", "edited_draft": text}
 
         if choice in ("4", "终止", "quit", "exit", "q"):
             return {"action": "quit"}
 
-        print("⚠️ 输入无效，请输入 1 / 2 / 3 / 4。")
+        print(" 输入无效，请输入 1 / 2 / 3 / 4。")
 
 
 def run_interactive(state: dict) -> dict:
@@ -147,7 +147,7 @@ def run_interactive(state: dict) -> dict:
     sid = state["session_id"]
     config = {"configurable": {"thread_id": sid}}
 
-    print(f"\n▶️ 开始执行（会话 {sid}，将在人工审核处暂停）\n")
+    print(f"\n 开始执行（会话 {sid}，将在人工审核处暂停）\n")
     agent.app.invoke(state, config)
 
     round_no = 0
@@ -155,10 +155,10 @@ def run_interactive(state: dict) -> dict:
         gs = agent.app.get_state(config)
 
         if not gs.next:
-            print("\n🏁 工作流结束")
+            print("\n 工作流结束")
             break
         if "human_review" not in gs.next:
-            print(f"\n⚠️ 停在非预期节点 {gs.next}，结束。")
+            print(f"\n 停在非预期节点 {gs.next}，结束。")
             break
 
         round_no += 1
@@ -191,7 +191,7 @@ def print_summary(final: dict):
     print("-" * 64)
     for log in final.get("step_logs", []):
         status = log.get("status", "?")
-        mark = {"success": "✅", "failed": "❌", "running": "⏳"}.get(status, "•")
+        mark = {"success": "", "failed": "", "running": ""}.get(status, "•")
         print(f"  {mark} {log.get('step_name', ''):<12} {log.get('duration_ms', 0):>6} ms")
 
     print("-" * 64)
@@ -221,7 +221,7 @@ def print_summary(final: dict):
 def cmd_init(args):
     root = proj.resolve_project(args.project)
     proj.ensure_project(root, seed_demo=args.demo)
-    print(f"✅ 项目已就绪：{root}")
+    print(f" 项目已就绪：{root}")
     if args.demo:
         print("   已写入演示卡片（人物/剧情/文风/伏笔/世界观各 1 条）。")
 
@@ -256,7 +256,7 @@ def _prompt_card(card_type: str, data_json: str = "") -> dict:
                     card["id"] = f"{card_type[:3]}_{uuid.uuid4().hex[:6]}"
                 return card
         except Exception as e:
-            print(f"⚠️ --data 解析失败：{e}，改为逐项输入。")
+            print(f" --data 解析失败：{e}，改为逐项输入。")
 
     # 交互式：按字段逐个提示（回车留空）
     card: dict = {}
@@ -276,7 +276,7 @@ def cmd_new_card(args):
     proj.ensure_project(root)
     card = _prompt_card(args.type, args.data)
     key = proj.create_card(root, args.type, card)
-    print(f"✅ 已写入 {proj.CARD_TYPES[args.type][0]}  id={key}")
+    print(f" 已写入 {proj.CARD_TYPES[args.type][0]}  id={key}")
 
 
 def cmd_setup(args):
@@ -295,8 +295,8 @@ def cmd_setup(args):
             if "name" in proj.CARD_FIELDS[ctype] and not card.get("name"):
                 card["name"] = name
             key = proj.create_card(root, ctype, card)
-            print(f"    ✅ 已写入 id={key}")
-    print(f"\n✅ 项目素材卡建立完成：{root}")
+            print(f"     已写入 id={key}")
+    print(f"\n 项目素材卡建立完成：{root}")
 
 
 def cmd_import_md(args):
@@ -348,11 +348,11 @@ def cmd_write(args):
 
     if not state.get("character_cards") and not state.get("plot_cards") \
             and not state.get("style_cards"):
-        print("⚠️ 该项目还没有任何素材卡，Agent 只能凭大纲自由发挥。"
+        print(" 该项目还没有任何素材卡，Agent 只能凭大纲自由发挥。"
               "可先跑 `setup`/`new-card` 建卡，或 `init --demo` 塞演示卡。")
 
     if args.auto:
-        print(f"\n▶️ 开始执行（会话 {state['session_id']}，自动通过人工审核）\n")
+        print(f"\n 开始执行（会话 {state['session_id']}，自动通过人工审核）\n")
         final = agent.run_session(state, auto_approve_human=True)
     else:
         final = run_interactive(state)

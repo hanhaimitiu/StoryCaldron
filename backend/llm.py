@@ -60,8 +60,8 @@ def _call_llm(
             return get_llm(temperature).invoke(messages).content.strip()
         except Exception as e:
             last_err = e
-            print(f"⚠️ LLM 调用失败（第 {attempt + 1}/{LLM_MAX_RETRIES} 次）: {e}")
-    print(f"❌ LLM 调用最终失败: {last_err}")
+            print(f" LLM 调用失败（第 {attempt + 1}/{LLM_MAX_RETRIES} 次）: {e}")
+    print(f" LLM 调用最终失败: {last_err}")
     return ""
 
 

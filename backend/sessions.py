@@ -50,7 +50,7 @@ def _save_sessions():
             json.dump(data, f, ensure_ascii=False, indent=2)
         os.replace(tmp, SESSIONS_FILE)
     except Exception as e:
-        print(f"⚠️ 保存会话注册表失败: {e}")
+        print(f" 保存会话注册表失败: {e}")
 
 
 def _load_sessions():
@@ -62,7 +62,7 @@ def _load_sessions():
         with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
-        print(f"⚠️ 读取会话注册表失败: {e}")
+        print(f" 读取会话注册表失败: {e}")
         return
     with SESSIONS_LOCK:
         for sid, meta in data.items():
